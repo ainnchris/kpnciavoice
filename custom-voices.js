@@ -1,38 +1,30 @@
-import { Client, handle_file } from "https://cdn.jsdelivr.net/npm/@gradio/client@2.5.0/+esm";
-
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 
-const DEFAULT_SPACE = "ResembleAI/Chatterbox-Multilingual-TTS";
-const CATALOG_URL = "./curated-voices.json";
-const DB_NAME = "kpnc-custom-voices-db";
-const STORE = "voices";
+const DEFAULT_API_BASE = String(window.KPNC_FISH_API_BASE || "").trim().replace(/\/+$/, "");
+const MY_VOICES_KEY = "kpnc:fishMyVoices";
+const SELECTED_KEY = "kpnc:fishSelectedVoice";
+const API_OVERRIDE_KEY = "kpnc:fishApiOverride";
 
 const state = {
-  space: localStorage.getItem("kpnc:chatterboxSpace") || DEFAULT_SPACE,
-  client: null,
-  endpoint: null,
+  apiBase: (localStorage.getItem(API_OVERRIDE_KEY) || DEFAULT_API_BASE).replace(/\/+$/, ""),
   connected: false,
-  connecting: null,
+  model: "Fish Audio",
   voices: [],
-  curated: [],
-  local: [],
-  selectedId: localStorage.getItem("kpnc:customVoiceId") || null,
-  busy: false,
+  myVoices: readJSON(MY_VOICES_KEY, []),
+  selectedId: localStorage.getItem(SELECTED_KEY) || null,
   currentBlob: null,
   currentUrl: null,
-  imageUrls: [],
+  busy: false,
+  searchTimer: null,
 };
 
-let toastTimer;
-function toast(message, error = false) {
-  const el = $("#toast");
-  if (!el) return;
-  el.textContent = message;
-  el.classList.toggle("error", error);
-  el.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), 4500);
+function readJSON(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+
+function saveJSON(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
 function escapeHTML(value) {
@@ -44,462 +36,434 @@ function escapeHTML(value) {
     .replaceAll("'", "&#039;");
 }
 
-function initials(name) {
-  const p = String(name || "Voz").trim().split(/\s+/).filter(Boolean);
-  return ((p[0]?.[0] || "V") + (p[1]?.[0] || p[0]?.[1] || "")).toUpperCase();
-}
-
 function sanitizeFilename(value) {
   return String(value || "voz")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9-_]+/g, "-")
-    .replace(/-+/g, "-").replace(/^-|-$/g, "")
-    .slice(0, 60) || "voz";
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 70) || "voz";
 }
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 2);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+let toastTimer;
+function toast(message, error = false) {
+  const node = $("#toast");
+  if (!node) return;
+  node.textContent = message;
+  node.classList.toggle("error", error);
+  node.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => node.classList.remove("show"), 4500);
 }
 
-async function getLocalVoices() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, "readonly").objectStore(STORE).getAll();
-    req.onsuccess = () => resolve((req.result || []).map(v => ({ ...v, source: "local" })));
-    req.onerror = () => reject(req.error);
-  });
+function endpoint(path) {
+  if (!state.apiBase) throw new Error("Backend Fish não configurado.");
+  return `${state.apiBase}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-async function putLocalVoice(voice) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, "readwrite").objectStore(STORE).put(voice);
-    req.onsuccess = resolve;
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function removeLocalVoice(id) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
-    req.onsuccess = resolve;
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function loadCuratedCatalog() {
+async function apiFetch(path, options = {}, timeoutMs = 90000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${CATALOG_URL}?v=3`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    return (Array.isArray(data.voices) ? data.voices : []).map(v => ({ ...v, source: "curated" }));
-  } catch (error) {
-    console.warn("Falha ao carregar catálogo curado:", error);
-    return [];
+    const response = await fetch(endpoint(path), {
+      ...options,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+async function readError(response) {
+  const type = response.headers.get("content-type") || "";
+  if (type.includes("application/json")) {
+    const data = await response.json().catch(() => null);
+    return data?.detail || data?.message || data?.error || `HTTP ${response.status}`;
+  }
+  const text = await response.text().catch(() => "");
+  return text.slice(0, 700) || `HTTP ${response.status}`;
+}
+
+function setApiState(online, note = "") {
+  state.connected = online;
+  const badge = $("#fishApiState");
+  if (badge) {
+    badge.className = `custom-engine-state ${online ? "online" : "offline"}`;
+    badge.textContent = online ? `● ${state.model}` : "● Fish API desconectada";
+  }
+  if (note && $("#fishBackendNote")) $("#fishBackendNote").textContent = note;
+  const setup = $("#fishApiSetup");
+  if (setup) setup.hidden = Boolean(state.apiBase);
+  const setting = $("#fishModelSetting");
+  if (setting && state.model) setting.textContent = state.model;
+}
+
+function patchFishCopy() {
+  const hero = $("#view-discovery .hero p");
+  if (hero) hero.textContent = "31 vozes locais no navegador e uma biblioteca avançada integrada à Fish Audio para busca, clonagem persistente e geração de alta qualidade por reference_id.";
+}
+
+function normalizeVoice(raw, own = false) {
+  if (!raw) return null;
+  const id = raw.id || raw._id;
+  if (!id) return null;
+  const samples = Array.isArray(raw.samples) ? raw.samples : [];
+  const sample = samples.find(x => x?.audio) || samples[0] || null;
+  return {
+    id,
+    title: raw.title || raw.name || "Voz sem nome",
+    description: raw.description || "",
+    cover_image: raw.cover_image || raw.coverImage || "",
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
+    languages: Array.isArray(raw.languages) ? raw.languages : [],
+    licensed: Boolean(raw.licensed),
+    author: raw.author || null,
+    task_count: Number(raw.task_count || 0),
+    default_text: raw.default_text || "",
+    sample_url: raw.sample_url || sample?.audio || "",
+    visibility: raw.visibility || (own ? "unlist" : "public"),
+    state: raw.state || "created",
+    own,
+  };
+}
+
+function allVoices() {
+  const byId = new Map();
+  for (const raw of state.myVoices) {
+    const v = normalizeVoice(raw, true);
+    if (v) byId.set(v.id, v);
+  }
+  for (const raw of state.voices) {
+    const v = normalizeVoice(raw, false);
+    if (v && !byId.has(v.id)) byId.set(v.id, v);
+  }
+  return [...byId.values()];
 }
 
 function selectedVoice() {
-  return state.voices.find(v => v.id === state.selectedId) || null;
+  return allVoices().find(v => v.id === state.selectedId) || null;
 }
 
-function revokeImageUrls() {
-  state.imageUrls.forEach(url => URL.revokeObjectURL(url));
-  state.imageUrls = [];
+function languageLabel(voice) {
+  const langs = voice.languages?.filter(Boolean) || [];
+  if (!langs.length) return "Idioma não informado";
+  return langs.slice(0, 2).join(", ").toUpperCase();
 }
 
-function imageForVoice(voice) {
-  if (voice.imageUrl) return voice.imageUrl;
-  if (voice.image instanceof Blob) {
-    const url = URL.createObjectURL(voice.image);
-    state.imageUrls.push(url);
-    return url;
-  }
-  return null;
+function initials(name) {
+  const parts = String(name || "Voz").trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] || "V") + (parts[1]?.[0] || parts[0]?.[1] || "")).toUpperCase();
 }
 
 function voiceCard(voice) {
   const selected = voice.id === state.selectedId;
-  const image = imageForVoice(voice);
-  const badge = voice.source === "curated" ? (voice.badge || "Catálogo") : "Minha voz";
-  const art = image
-    ? `<img src="${escapeHTML(image)}" alt="" loading="lazy" />`
-    : `<span class="voice-monogram">${escapeHTML(initials(voice.name))}</span>`;
-  const remove = voice.source === "local"
-    ? `<button class="custom-mini-btn danger" data-custom-delete="${escapeHTML(voice.id)}" aria-label="Excluir voz">×</button>`
-    : "";
-  return `<article class="voice-card custom-voice-card ${selected ? "custom-card-selected" : ""}" data-custom-card="${escapeHTML(voice.id)}" style="--v1:#4558ff;--v2:#8958d8">
-    <div class="voice-art">${art}<button class="voice-play" data-custom-preview="${escapeHTML(voice.id)}" aria-label="Ouvir referência">▶</button></div>
+  const image = voice.cover_image
+    ? `<img src="${escapeHTML(voice.cover_image)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+    : `<span class="voice-monogram">${escapeHTML(initials(voice.title))}</span>`;
+  const badge = voice.own ? "Minha voz" : voice.licensed ? "✓ Licenciada" : "Comunidade";
+  const author = voice.author?.nickname ? ` · ${voice.author.nickname}` : "";
+  const playLabel = voice.sample_url ? "Ouvir amostra" : "Gerar prévia";
+  return `<article class="voice-card custom-voice-card ${selected ? "custom-card-selected" : ""}" data-fish-card="${escapeHTML(voice.id)}" style="--v1:#3166ff;--v2:#7d4ce8">
+    <div class="voice-art">${image}<button class="voice-play" data-fish-preview="${escapeHTML(voice.id)}" aria-label="${playLabel}">▶</button></div>
     <div class="voice-meta">
-      <div style="min-width:0"><div class="voice-name">${escapeHTML(voice.name)}</div><div class="voice-sub">${escapeHTML(badge)} · ${escapeHTML((voice.language || "pt").toUpperCase())}${voice.category ? ` · ${escapeHTML(voice.category)}` : ""}</div></div>
-      <div class="custom-card-actions">${remove}</div>
+      <div style="min-width:0">
+        <div class="voice-name">${escapeHTML(voice.title)}</div>
+        <div class="voice-sub">${escapeHTML(badge)} · ${escapeHTML(languageLabel(voice))}${escapeHTML(author)}</div>
+      </div>
+      <span class="fish-use-count" title="Gerações">${voice.task_count ? `${voice.task_count.toLocaleString("pt-BR")}×` : ""}</span>
     </div>
   </article>`;
 }
 
-function renderSelected() {
-  const voice = selectedVoice();
-  const box = $("#customSelectedVoice");
-  if (!box) return;
-  if (!voice) {
-    box.innerHTML = `<div class="custom-selected-icon">◎</div><div><strong>Nenhuma voz selecionada</strong><span>Escolha uma voz do catálogo abaixo.</span></div>`;
-    return;
-  }
-  box.innerHTML = `<div class="custom-selected-icon">${escapeHTML(initials(voice.name))}</div><div><strong>${escapeHTML(voice.name)}</strong><span>${voice.source === "curated" ? "Catálogo público" : "Minha biblioteca"} · Chatterbox Multilingual</span></div>`;
-  const language = $("#customBaseVoice");
-  if (language && voice.language) language.value = voice.language;
-}
-
 function renderVoices() {
-  revokeImageUrls();
-  const grid = $("#customVoiceGrid");
+  const grid = $("#fishVoiceGrid");
   if (!grid) return;
-  const curated = state.voices.filter(v => v.source === "curated");
-  const local = state.voices.filter(v => v.source === "local");
-  let html = "";
-  if (curated.length) {
-    html += `<div class="custom-library-label" style="grid-column:1/-1"><strong>Catálogo público</strong><span>Perfis prontos: escolha, escreva e gere.</span></div>`;
-    html += curated.map(voiceCard).join("");
-  }
-  if (local.length) {
-    html += `<div class="custom-library-label" style="grid-column:1/-1;margin-top:8px"><strong>Minhas vozes</strong><span>Referências salvas apenas neste navegador.</span></div>`;
-    html += local.map(voiceCard).join("");
-  }
-  if (!html) html = `<div class="empty custom-empty-note" style="grid-column:1/-1">Nenhuma voz disponível.</div>`;
-  grid.innerHTML = html;
-  const count = $("#customVoiceCount");
-  if (count) count.textContent = `${state.voices.length} ${state.voices.length === 1 ? "voz disponível" : "vozes disponíveis"}`;
+  const voices = allVoices();
+  grid.innerHTML = voices.length
+    ? voices.map(voiceCard).join("")
+    : `<div class="empty" style="grid-column:1/-1">Nenhuma voz encontrada com esses filtros.</div>`;
+  $("#fishVoiceCount").textContent = `${voices.length} ${voices.length === 1 ? "voz" : "vozes"}`;
   renderSelected();
 }
 
-async function refreshVoices() {
-  const [curated, local] = await Promise.all([loadCuratedCatalog(), getLocalVoices().catch(() => [])]);
-  state.curated = curated;
-  state.local = local;
-  state.voices = [...curated, ...local];
-  if (!state.voices.some(v => v.id === state.selectedId)) {
-    state.selectedId = state.voices[0]?.id || null;
-    if (state.selectedId) localStorage.setItem("kpnc:customVoiceId", state.selectedId);
-    else localStorage.removeItem("kpnc:customVoiceId");
+function renderSelected() {
+  const box = $("#fishSelectedVoice");
+  if (!box) return;
+  const voice = selectedVoice();
+  if (!voice) {
+    box.innerHTML = `<div class="custom-selected-icon">◎</div><div><strong>Nenhuma voz selecionada</strong><span>Escolha uma voz da biblioteca acima ou crie uma nova.</span></div>`;
+    $("#fishGenerationStatus").textContent = "Selecione uma voz.";
+    return;
   }
+  const badge = voice.licensed ? "Licenciada pela Fish" : voice.own ? "Criada por você" : "Modelo público da comunidade";
+  box.innerHTML = `<div class="custom-selected-icon">${escapeHTML(initials(voice.title))}</div><div><strong>${escapeHTML(voice.title)}</strong><span>${escapeHTML(badge)} · ${escapeHTML(languageLabel(voice))} · ${escapeHTML(voice.id)}</span></div>`;
+  $("#fishGenerationStatus").textContent = "Pronto para gerar.";
+}
+
+function selectVoice(id) {
+  state.selectedId = id;
+  localStorage.setItem(SELECTED_KEY, id);
   renderVoices();
+  $("#fishSpeechText")?.focus();
 }
 
-function setRemoteState(online, detail = "") {
-  state.connected = online;
-  const badge = $("#customEngineState");
-  if (badge) {
-    badge.className = `custom-engine-state ${online ? "online" : "offline"}`;
-    badge.textContent = online ? "● Chatterbox remoto conectado" : "● Chatterbox remoto desconectado";
+async function connectApi(showToast = false) {
+  if (!state.apiBase) {
+    setApiState(false, "Configure o Cloudflare Worker para ativar a integração Fish.");
+    if ($("#fishApiInput")) $("#fishApiInput").value = "";
+    return false;
   }
-  const info = $("#customEngineDetails");
-  if (info) info.textContent = detail || (online ? `Space: ${state.space}` : "Conexão remota indisponível.");
-  const status = $("#customGenerationStatus");
-  if (status && !state.busy) status.textContent = online ? "Pronto para gerar." : "Conectando ao motor remoto…";
+  try {
+    const response = await apiFetch("/health", {}, 8000);
+    if (!response.ok) throw new Error(await readError(response));
+    const data = await response.json();
+    state.model = data.model || "Fish Audio";
+    setApiState(Boolean(data.configured), data.configured ? "Backend seguro conectado. A chave da Fish não é enviada ao navegador." : "Worker conectado, mas FISH_API_KEY ainda não foi configurada.");
+    if (!data.configured) throw new Error("O Worker está online, mas falta configurar FISH_API_KEY como segredo.");
+    if (showToast) toast("Fish Audio conectada.");
+    return true;
+  } catch (error) {
+    setApiState(false, "Não foi possível conectar ao backend Fish.");
+    if (showToast) toast(error.message || String(error), true);
+    return false;
+  }
 }
 
-function findTtsEndpoint(api) {
-  const groups = [api?.named_endpoints, api?.unnamed_endpoints, api?.endpoints].filter(Boolean);
-  const candidates = [];
-  for (const group of groups) {
-    if (Array.isArray(group)) {
-      for (const item of group) candidates.push([item?.api_name || item?.name || item?.path, item]);
-    } else if (typeof group === "object") {
-      for (const [name, item] of Object.entries(group)) candidates.push([name, item]);
+function currentQuery() {
+  const params = new URLSearchParams({
+    page_size: "48",
+    page_number: "1",
+    sort_by: $("#fishSort")?.value || "task_count",
+  });
+  const title = $("#fishVoiceSearch")?.value.trim();
+  const language = $("#fishLanguage")?.value;
+  if (title) params.set("title", title);
+  if (language) params.set("language", language);
+  if ($("#fishLicensedOnly")?.checked) params.set("licensed", "true");
+  return params.toString();
+}
+
+async function loadVoices(showToast = false) {
+  if (!state.connected && !(await connectApi(false))) {
+    renderVoices();
+    return;
+  }
+  const grid = $("#fishVoiceGrid");
+  if (grid) grid.innerHTML = `<div class="empty" style="grid-column:1/-1">Buscando biblioteca Fish…</div>`;
+  try {
+    const response = await apiFetch(`/api/voices?${currentQuery()}`, {}, 20000);
+    if (!response.ok) throw new Error(await readError(response));
+    const data = await response.json();
+    state.voices = Array.isArray(data.items) ? data.items : [];
+    if (!state.selectedId && state.voices[0]) {
+      state.selectedId = state.voices[0].id || state.voices[0]._id;
+      if (state.selectedId) localStorage.setItem(SELECTED_KEY, state.selectedId);
     }
+    renderVoices();
+    $("#fishBackendNote").textContent = `${data.total ?? state.voices.length} modelos encontrados na Fish. Esta página mostra até 48 por busca.`;
+    if (showToast) toast("Biblioteca atualizada.");
+  } catch (error) {
+    state.voices = [];
+    renderVoices();
+    $("#fishBackendNote").textContent = error.message || "Falha ao carregar a biblioteca Fish.";
+    if (showToast) toast(error.message || String(error), true);
   }
-  const score = ([name, item]) => {
-    const text = `${name || ""} ${item?.description || ""} ${item?.parameters?.map?.(p => `${p?.parameter_name || ""} ${p?.label || ""} ${p?.type?.type || p?.type || ""}`).join(" ") || ""}`.toLowerCase();
-    let s = 0;
-    if (text.includes("generate_tts_audio")) s += 20;
-    if (text.includes("text")) s += 3;
-    if (text.includes("language")) s += 3;
-    if (text.includes("audio")) s += 3;
-    if ((item?.parameters?.length || 0) >= 7) s += 5;
-    return s;
-  };
-  candidates.sort((a, b) => score(b) - score(a));
-  const best = candidates[0];
-  if (!best || score(best) < 8) return "/predict";
-  const name = String(best[0] || "/predict");
-  return name.startsWith("/") ? name : `/${name}`;
 }
 
-async function connectRemote(showToast = false) {
-  if (state.connected && state.client) return state.client;
-  if (state.connecting) return state.connecting;
-  const field = $("#customEngineUrl");
-  const space = String(field?.value || state.space || DEFAULT_SPACE).trim();
-  if (!space) throw new Error("Informe um Hugging Face Space.");
-  state.space = space;
-  localStorage.setItem("kpnc:chatterboxSpace", space);
-  if (field) field.value = space;
-  setRemoteState(false, `Conectando a ${space}…`);
-  state.connecting = (async () => {
-    const client = await Client.connect(space);
-    const api = await client.view_api();
-    state.endpoint = findTtsEndpoint(api);
-    state.client = client;
-    setRemoteState(true, `Chatterbox Multilingual · ${space} · endpoint ${state.endpoint}`);
-    if (showToast) toast("Chatterbox remoto conectado.");
-    return client;
-  })();
-  try { return await state.connecting; }
-  catch (error) {
-    state.client = null;
-    state.endpoint = null;
-    setRemoteState(false, `Falha ao acessar ${space}. O Space pode estar dormindo, em fila ou indisponível.`);
-    if (showToast) toast(error?.message || String(error), true);
-    throw error;
-  } finally { state.connecting = null; }
-}
-
-async function addLocalVoice() {
-  if (state.busy) return;
-  const name = $("#customVoiceName")?.value.trim();
-  const reference = $("#customReferenceFile")?.files?.[0];
-  const image = $("#customImageFile")?.files?.[0];
-  const acknowledged = $("#customRightsCheck")?.checked;
-  if (!name) return toast("Dê um nome para a voz.", true);
-  if (!reference) return toast("Escolha um áudio de referência.", true);
-  if (!acknowledged) return toast("Confirme que a saída será tratada como áudio sintético.", true);
-  if (reference.size > 30 * 1024 * 1024) return toast("A referência deve ter no máximo 30 MB.", true);
-  if (image && image.size > 5 * 1024 * 1024) return toast("A imagem deve ter no máximo 5 MB.", true);
-  const id = `local-${crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
-  const item = {
-    id,
-    name,
-    source: "local",
-    language: "pt",
-    category: "Minha voz",
-    reference,
-    image: image || null,
-    createdAt: Date.now(),
-  };
+async function generatePreview(id) {
+  const voice = allVoices().find(v => v.id === id);
+  if (!voice || state.busy) return;
+  if (voice.sample_url) {
+    const audio = new Audio(voice.sample_url);
+    audio.play().catch(() => toast("O navegador não conseguiu tocar a amostra desta voz.", true));
+    return;
+  }
+  const text = voice.default_text || "Olá. Esta é uma breve demonstração desta voz.";
   try {
-    await putLocalVoice(item);
-    state.selectedId = id;
-    localStorage.setItem("kpnc:customVoiceId", id);
-    $("#customVoiceName").value = "";
-    $("#customReferenceFile").value = "";
-    $("#customImageFile").value = "";
-    $("#customRightsCheck").checked = false;
-    await refreshVoices();
-    toast("Voz salva neste navegador.");
-  } catch (error) { toast(error?.message || String(error), true); }
-}
-
-async function deleteVoice(id) {
-  const voice = state.voices.find(v => v.id === id);
-  if (!voice || voice.source !== "local") return;
-  if (!confirm(`Excluir “${voice.name}” deste navegador?`)) return;
-  await removeLocalVoice(id);
-  if (state.selectedId === id) state.selectedId = null;
-  await refreshVoices();
-  toast("Voz removida.");
-}
-
-async function referenceForVoice(voice) {
-  if (voice.referenceUrl) return voice.referenceUrl;
-  if (voice.reference instanceof Blob) return voice.reference;
-  throw new Error("Esta voz não possui uma referência de áudio válida.");
-}
-
-async function previewReference(id) {
-  const voice = state.voices.find(v => v.id === id);
-  if (!voice) return;
-  try {
-    const ref = await referenceForVoice(voice);
-    const url = typeof ref === "string" ? ref : URL.createObjectURL(ref);
+    const blob = await requestTTS(text, id, "mp3", 1);
+    const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
-    if (typeof ref !== "string") {
-      audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
-      audio.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
-    }
+    audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
+    audio.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
     await audio.play();
-  } catch (error) { toast(error?.message || String(error), true); }
+  } catch (error) {
+    toast(error.message || String(error), true);
+  }
 }
 
-function audioUrlFromResult(result) {
-  const data = result?.data;
-  const first = Array.isArray(data) ? data[0] : data;
-  if (!first) return null;
-  if (typeof first === "string") return first;
-  if (first.url) return first.url;
-  if (first.path && /^https?:\/\//i.test(first.path)) return first.path;
-  if (Array.isArray(first) && typeof first[1] === "string") return first[1];
-  return null;
+async function requestTTS(text, referenceId, format, speed) {
+  if (!state.connected && !(await connectApi(false))) throw new Error("Fish API não está conectada.");
+  const response = await apiFetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      reference_id: referenceId,
+      format,
+      speed,
+      latency: "normal",
+      chunk_length: 250,
+      normalize: true,
+    }),
+  }, 180000);
+  if (!response.ok) throw new Error(await readError(response));
+  return response.blob();
 }
 
-function setBusy(busy, text) {
+function setFishBusy(busy, label = "") {
   state.busy = busy;
-  const generate = $("#customGenerateBtn");
-  const add = $("#customAddVoiceBtn");
+  const generate = $("#fishGenerateBtn");
+  const clone = $("#cloneBtn");
   if (generate) generate.disabled = busy;
-  if (add) add.disabled = busy;
-  if (text && $("#customGenerationStatus")) $("#customGenerationStatus").textContent = text;
+  if (clone) clone.disabled = busy;
+  $$('[data-fish-preview]').forEach(x => x.disabled = busy);
+  if (label && $("#fishGenerationStatus")) $("#fishGenerationStatus").textContent = label;
 }
 
-async function generateVoice() {
+function showResult(blob, format) {
+  if (state.currentUrl) URL.revokeObjectURL(state.currentUrl);
+  state.currentBlob = blob;
+  state.currentUrl = URL.createObjectURL(blob);
+  $("#fishResultAudio").src = state.currentUrl;
+  $("#fishResultCard").classList.add("visible");
+  $("#fishResultCard").dataset.format = format;
+}
+
+async function generateFish() {
   if (state.busy) return;
   const voice = selectedVoice();
-  const text = $("#customSpeechText")?.value.trim();
-  const language = $("#customBaseVoice")?.value || voice?.language || "pt";
-  const exaggeration = Number($("#customQuality")?.value || 0.5);
-  if (!voice) return toast("Escolha uma voz.", true);
-  if (!text) return toast("Digite o texto que a voz deve falar.", true);
-  if (text.length > 300) return toast("O Chatterbox remoto aceita até 300 caracteres por geração nesta build.", true);
-  setBusy(true, `Preparando ${voice.name}…`);
+  const text = $("#fishSpeechText")?.value.trim();
+  const format = $("#fishFormat")?.value || "mp3";
+  const speed = Number($("#fishSpeed")?.value || 1);
+  if (!voice) return toast("Selecione uma voz Fish primeiro.", true);
+  if (!text) return toast("Digite o texto que deve ser falado.", true);
+  setFishBusy(true, `Gerando com ${voice.title}…`);
   try {
-    const client = await connectRemote(false);
-    const reference = await referenceForVoice(voice);
-    const prompt = handle_file(reference);
-    setBusy(true, `Gerando ${voice.name} no Chatterbox…`);
-    const result = await client.predict(state.endpoint || "/predict", [
-      text,
-      language,
-      prompt,
-      exaggeration,
-      0.8,
-      0,
-      0.5,
-    ]);
-    const remoteUrl = audioUrlFromResult(result);
-    if (!remoteUrl) throw new Error("O Chatterbox respondeu, mas não retornou um áudio reconhecível.");
-    const response = await fetch(remoteUrl);
-    if (!response.ok) throw new Error(`Falha ao baixar o áudio gerado (${response.status}).`);
-    const blob = await response.blob();
-    if (state.currentUrl) URL.revokeObjectURL(state.currentUrl);
-    state.currentBlob = blob;
-    state.currentUrl = URL.createObjectURL(blob);
-    $("#customResultAudio").src = state.currentUrl;
-    $("#customResultCard").classList.add("visible");
-    $("#customGenerationStatus").textContent = "Áudio gerado com sucesso.";
-    toast("Voz gerada pelo Chatterbox.");
+    const blob = await requestTTS(text, voice.id, format, speed);
+    showResult(blob, format);
+    $("#fishGenerationStatus").textContent = "Áudio gerado com sucesso.";
+    toast("Áudio Fish gerado.");
   } catch (error) {
-    const message = error?.message || String(error);
-    $("#customGenerationStatus").textContent = "Falha na geração.";
-    toast(/quota|gpu|queue|space/i.test(message) ? `O serviço remoto está em fila/cota: ${message}` : message, true);
-  } finally { setBusy(false); }
+    $("#fishGenerationStatus").textContent = "Falha na geração.";
+    toast(error.message || String(error), true);
+  } finally {
+    setFishBusy(false);
+  }
+}
+
+async function createClone() {
+  if (state.busy) return;
+  const name = $("#cloneName")?.value.trim();
+  const reference = $("#cloneReference")?.files?.[0];
+  const transcript = $("#cloneTranscript")?.value.trim();
+  const cover = $("#cloneCover")?.files?.[0];
+  const visibility = $("#cloneVisibility")?.value || "unlist";
+  const tags = $("#cloneTags")?.value.trim();
+  const consent = $("#cloneConsent")?.checked;
+  if (!name) return toast("Informe um nome para a voz.", true);
+  if (!reference) return toast("Selecione um áudio de referência.", true);
+  if (!consent) return toast("Confirme a declaração de direitos e consentimento.", true);
+  if (reference.size > 20 * 1024 * 1024) return toast("A referência deve ter no máximo 20 MB nesta build.", true);
+  if (cover && cover.size > 5 * 1024 * 1024) return toast("A capa deve ter no máximo 5 MB.", true);
+  if (visibility === "public" && !cover) return toast("A Fish exige uma capa para modelos públicos.", true);
+  if (!state.connected && !(await connectApi(false))) return toast("Backend Fish indisponível.", true);
+
+  const form = new FormData();
+  form.append("name", name);
+  form.append("reference", reference, reference.name || "reference.wav");
+  form.append("visibility", visibility);
+  form.append("rights_confirmed", "true");
+  if (transcript) form.append("transcript", transcript);
+  if (tags) form.append("tags", tags);
+  if (cover) form.append("cover", cover, cover.name || "cover.webp");
+
+  state.busy = true;
+  const button = $("#cloneBtn");
+  if (button) { button.disabled = true; button.textContent = "Criando voz…"; }
+  $("#cloneStatus").textContent = "Enviando referência para a Fish e criando reference_id…";
+  try {
+    const response = await apiFetch("/api/voices/clone", { method: "POST", body: form }, 180000);
+    if (!response.ok) throw new Error(await readError(response));
+    const data = await response.json();
+    const voice = normalizeVoice(data.voice || data, true);
+    if (!voice) throw new Error("A Fish criou o modelo, mas não retornou um ID reconhecível.");
+    state.myVoices = [voice, ...state.myVoices.filter(v => (v.id || v._id) !== voice.id)].slice(0, 100);
+    saveJSON(MY_VOICES_KEY, state.myVoices);
+    state.selectedId = voice.id;
+    localStorage.setItem(SELECTED_KEY, voice.id);
+    renderVoices();
+    $("#cloneName").value = "";
+    $("#cloneReference").value = "";
+    $("#cloneTranscript").value = "";
+    $("#cloneCover").value = "";
+    $("#cloneTags").value = "";
+    $("#cloneConsent").checked = false;
+    $("#cloneStatus").textContent = `Voz criada. reference_id: ${voice.id}`;
+    toast("Voz criada na Fish e selecionada.");
+  } catch (error) {
+    $("#cloneStatus").textContent = error.message || "Falha ao criar a voz.";
+    toast(error.message || String(error), true);
+  } finally {
+    state.busy = false;
+    if (button) { button.disabled = false; button.textContent = "+ Criar voz na Fish"; }
+  }
 }
 
 function downloadCurrent() {
   if (!state.currentBlob) return;
   const voice = selectedVoice();
+  const format = $("#fishResultCard")?.dataset.format || "mp3";
   const url = URL.createObjectURL(state.currentBlob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${sanitizeFilename(voice?.name || "voz")}-${Date.now()}.wav`;
+  a.download = `${sanitizeFilename(voice?.title || "fish-voice")}-${Date.now()}.${format}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 1200);
 }
 
-function patchUI() {
-  const nav = $("[data-view-target='custom']");
-  if (nav) nav.innerHTML = `<span class="nav-icon">◎</span> Vozes especiais`;
-  const head = $("#view-custom .section-head h2");
-  if (head) head.textContent = "Vozes especiais";
-  const headP = $("#view-custom .section-head p");
-  if (headP) headP.textContent = "Perfis prontos com timbre de referência: escolha a voz, escreva o texto e gere diretamente com Chatterbox Multilingual.";
-  const callout = $("#view-custom .custom-callout");
-  if (callout) callout.innerHTML = `<strong>Modo Fish-like</strong><span>Texto → perfil de voz já cadastrado → Chatterbox Multilingual → WAV. Sem Seed-VC e sem fala-base intermediária.</span>`;
-
-  const engineTitle = $("#view-custom .custom-panel:first-of-type h2");
-  if (engineTitle) engineTitle.textContent = "Motor remoto";
-  const engineSub = $("#view-custom .custom-panel:first-of-type .panel-sub");
-  if (engineSub) engineSub.textContent = "O site usa um Hugging Face Space do Chatterbox Multilingual. O visitante não instala nada.";
-  const engineLabel = $("label[for='customEngineUrl']");
-  if (engineLabel) engineLabel.textContent = "Hugging Face Space";
-  const engineInput = $("#customEngineUrl");
-  if (engineInput) { engineInput.value = state.space; engineInput.placeholder = DEFAULT_SPACE; }
-  const details = $("#customEngineDetails");
-  if (details) details.textContent = "Conectando ao Chatterbox Multilingual…";
-
-  const addTitle = [...$$("#view-custom .custom-panel:first-of-type h3")].find(Boolean);
-  if (addTitle) addTitle.textContent = "Criar minha voz";
-  const refHint = $("#customReferenceFile")?.nextElementSibling;
-  if (refHint) refHint.textContent = "Use de 5 a 30 segundos de voz limpa. Essa referência fica salva só neste navegador.";
-  const addButton = $("#customAddVoiceBtn");
-  if (addButton) addButton.textContent = "+ Salvar minha voz";
-
-  const generateTitle = $("#view-custom .custom-panel:nth-of-type(2) h2");
-  if (generateTitle) generateTitle.textContent = "Gerar diretamente na voz";
-  const generateSub = $("#view-custom .custom-panel:nth-of-type(2) .panel-sub");
-  if (generateSub) generateSub.textContent = "Nenhuma fala-base intermediária: o Chatterbox recebe texto + referência e sintetiza diretamente o timbre selecionado.";
-  const text = $("#customSpeechText");
-  if (text) { text.maxLength = 300; text.placeholder = "Digite o que a voz selecionada deve falar…"; }
-  const counterLabel = $("#customSpeechText")?.previousElementSibling?.querySelector("small");
-  if (counterLabel) counterLabel.innerHTML = `<span id="customCharCount">0</span>/300`;
-
-  const baseLabel = $("label[for='customBaseVoice']");
-  if (baseLabel) baseLabel.textContent = "Idioma";
-  const base = $("#customBaseVoice");
-  if (base) base.innerHTML = `
-    <option value="pt">Português</option><option value="en">Inglês</option><option value="es">Espanhol</option><option value="fr">Francês</option><option value="it">Italiano</option><option value="de">Alemão</option><option value="ja">Japonês</option><option value="ko">Coreano</option><option value="zh">Mandarim</option>`;
-  const qualityLabel = $("label[for='customQuality']");
-  if (qualityLabel) qualityLabel.textContent = "Expressividade";
-  const quality = $("#customQuality");
-  if (quality) quality.innerHTML = `<option value="0.35">Contida</option><option value="0.5" selected>Natural</option><option value="0.75">Expressiva</option><option value="1.0">Intensa</option>`;
-  const genBtn = $("#customGenerateBtn");
-  if (genBtn) genBtn.textContent = "✦ Gerar nesta voz";
-
-  const libraryTitle = $("#view-custom .custom-library-head h2");
-  if (libraryTitle) libraryTitle.textContent = "Catálogo de vozes";
-
-  const settingsCards = $$("#view-settings .settings-card");
-  const cloningCard = settingsCards.find(card => /Engine de clonagem/i.test(card.querySelector("h3")?.textContent || ""));
-  if (cloningCard) {
-    cloningCard.querySelector("h3").textContent = "Motor de vozes especiais";
-    const p = cloningCard.querySelector("p");
-    if (p) p.textContent = "Chatterbox Multilingual faz TTS zero-shot diretamente a partir do perfil de voz cadastrado.";
-    const rows = cloningCard.querySelectorAll(".info-row");
-    if (rows[0]) rows[0].innerHTML = `<span>Motor</span><strong>Chatterbox Multilingual</strong>`;
-    if (rows[1]) rows[1].innerHTML = `<span>Fluxo</span><strong>Texto → voz direta</strong>`;
-    if (rows[2]) rows[2].innerHTML = `<span>Referência</span><strong>5–30 s</strong>`;
-    if (rows[3]) rows[3].innerHTML = `<span>Instalação</span><strong>Nenhuma</strong>`;
-  }
+function saveApiOverride() {
+  const value = $("#fishApiInput")?.value.trim().replace(/\/+$/, "") || "";
+  if (!/^https:\/\//i.test(value)) return toast("Use a URL HTTPS do Cloudflare Worker.", true);
+  state.apiBase = value;
+  localStorage.setItem(API_OVERRIDE_KEY, value);
+  connectApi(true).then(ok => { if (ok) loadVoices(); });
 }
 
 function setupEvents() {
-  $("#customConnectBtn")?.addEventListener("click", () => connectRemote(true).catch(() => {}));
-  $("#customAddVoiceBtn")?.addEventListener("click", addLocalVoice);
-  $("#customGenerateBtn")?.addEventListener("click", generateVoice);
-  $("#customDownloadBtn")?.addEventListener("click", downloadCurrent);
-  $("#customRefreshBtn")?.addEventListener("click", refreshVoices);
-  $("#customSpeechText")?.addEventListener("input", event => {
-    const counter = $("#customCharCount");
-    if (counter) counter.textContent = event.target.value.length;
+  $("#fishRefreshBtn")?.addEventListener("click", () => loadVoices(true));
+  $("#fishSaveApiBtn")?.addEventListener("click", saveApiOverride);
+  $("#fishVoiceSearch")?.addEventListener("input", () => {
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(() => loadVoices(), 450);
   });
-  $("#customVoiceGrid")?.addEventListener("click", event => {
-    const preview = event.target.closest("[data-custom-preview]");
-    if (preview) { event.stopPropagation(); previewReference(preview.dataset.customPreview); return; }
-    const del = event.target.closest("[data-custom-delete]");
-    if (del) { event.stopPropagation(); deleteVoice(del.dataset.customDelete); return; }
-    const card = event.target.closest("[data-custom-card]");
-    if (card) {
-      state.selectedId = card.dataset.customCard;
-      localStorage.setItem("kpnc:customVoiceId", state.selectedId);
-      renderVoices();
-    }
+  $("#fishLanguage")?.addEventListener("change", () => loadVoices());
+  $("#fishSort")?.addEventListener("change", () => loadVoices());
+  $("#fishLicensedOnly")?.addEventListener("change", () => loadVoices());
+  $("#fishVoiceGrid")?.addEventListener("click", e => {
+    const preview = e.target.closest("[data-fish-preview]");
+    if (preview) { e.stopPropagation(); generatePreview(preview.dataset.fishPreview); return; }
+    const card = e.target.closest("[data-fish-card]");
+    if (card) selectVoice(card.dataset.fishCard);
   });
+  $("#fishSpeechText")?.addEventListener("input", e => $("#fishCharCount").textContent = e.target.value.length);
+  $("#fishSpeed")?.addEventListener("input", e => $("#fishSpeedValue").textContent = `${Number(e.target.value).toFixed(2)}×`);
+  $("#fishGenerateBtn")?.addEventListener("click", generateFish);
+  $("#fishDownloadBtn")?.addEventListener("click", downloadCurrent);
+  $("#cloneBtn")?.addEventListener("click", createClone);
 }
 
 async function init() {
-  patchUI();
+  patchFishCopy();
   setupEvents();
-  await refreshVoices();
-  connectRemote(false).catch(() => {});
+  if ($("#fishApiInput")) $("#fishApiInput").value = state.apiBase;
+  renderVoices();
+  const ok = await connectApi(false);
+  if (ok) await loadVoices();
 }
 
 init();
