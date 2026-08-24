@@ -1,0 +1,40 @@
+name: Validate KPNC Voice Studio
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Check browser JavaScript syntax
+        run: |
+          node --check app.js
+          node --check custom-voices.js
+          node --check tts-worker.js
+
+      - name: Check local engine Python syntax
+        run: python -m py_compile engine/server.py
+
+      - name: Verify required project files
+        run: |
+          test -f index.html
+          test -f styles.css
+          test -f custom-voices.css
+          test -f engine/setup_windows.bat
+          test -f engine/start_windows.bat
