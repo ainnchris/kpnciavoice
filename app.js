@@ -4,12 +4,6 @@ const VOICES = [
   ["am_adam", "a", "M"], ["am_echo", "a", "M"], ["am_eric", "a", "M"], ["am_fenrir", "a", "M"], ["am_liam", "a", "M"], ["am_michael", "a", "M"], ["am_onyx", "a", "M"], ["am_puck", "a", "M"], ["am_santa", "a", "M"],
   ["bf_alice", "b", "F"], ["bf_emma", "b", "F"], ["bf_isabella", "b", "F"], ["bf_lily", "b", "F"],
   ["bm_daniel", "b", "M"], ["bm_fable", "b", "M"], ["bm_george", "b", "M"], ["bm_lewis", "b", "M"],
-  ["ef_dora", "e", "F"], ["em_alex", "e", "M"], ["em_santa", "e", "M"],
-  ["ff_siwis", "f", "F"],
-  ["hf_alpha", "h", "F"], ["hf_beta", "h", "F"], ["hm_omega", "h", "M"], ["hm_psi", "h", "M"],
-  ["if_sara", "i", "F"], ["im_nicola", "i", "M"],
-  ["jf_alpha", "j", "F"], ["jf_gongitsune", "j", "F"], ["jf_nezumi", "j", "F"], ["jf_tebukuro", "j", "F"], ["jm_kumo", "j", "M"],
-  ["zf_xiaobei", "z", "F"], ["zf_xiaoni", "z", "F"], ["zf_xiaoxiao", "z", "F"], ["zf_xiaoyi", "z", "F"], ["zm_yunjian", "z", "M"], ["zm_yunxi", "z", "M"], ["zm_yunxia", "z", "M"], ["zm_yunyang", "z", "M"],
 ].map(([id, language, gender]) => ({ id, language, gender }));
 
 const LANGUAGES = {
@@ -17,27 +11,15 @@ const LANGUAGES = {
   p: { name: "Português BR", flag: "🇧🇷" },
   a: { name: "Inglês EUA", flag: "🇺🇸" },
   b: { name: "Inglês UK", flag: "🇬🇧" },
-  e: { name: "Espanhol", flag: "🇪🇸" },
-  f: { name: "Francês", flag: "🇫🇷" },
-  i: { name: "Italiano", flag: "🇮🇹" },
-  j: { name: "Japonês", flag: "🇯🇵" },
-  z: { name: "Mandarim", flag: "🇨🇳" },
-  h: { name: "Hindi", flag: "🇮🇳" },
 };
 
 const PREVIEW_TEXT = {
   p: "Olá. Esta é uma prévia da minha voz em português brasileiro.",
   a: "Hello. This is a short preview of my voice.",
   b: "Hello. This is a short preview of my British voice.",
-  e: "Hola. Esta es una breve muestra de mi voz.",
-  f: "Bonjour. Voici un court aperçu de ma voix.",
-  i: "Ciao. Questa è una breve anteprima della mia voce.",
-  j: "こんにちは。これは私の声の短いプレビューです。",
-  z: "你好。这是我的声音的简短预览。",
-  h: "नमस्ते। यह मेरी आवाज़ का एक छोटा सा नमूना है।",
 };
 
-const FEATURED = new Set(["pm_alex", "pf_dora", "af_heart", "af_bella", "am_onyx", "bf_emma", "bm_george", "jf_alpha", "zf_xiaoxiao"]);
+const FEATURED = new Set(["pm_alex", "pf_dora", "pm_santa", "af_heart", "af_bella", "am_onyx", "bf_emma", "bm_george"]);
 const COLOR_PAIRS = [
   ["#5167ff", "#8f5cff"], ["#1768a9", "#4f8dff"], ["#6941c6", "#b45cff"],
   ["#1c6b63", "#3b9f8f"], ["#8b3e5c", "#d76084"], ["#6d5526", "#c48a33"],
@@ -46,664 +28,206 @@ const COLOR_PAIRS = [
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const isPortuguese = (id) => /^p[fm]_/.test(id);
 
+function readJSON(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+function saveJSON(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+function escapeHTML(value) {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
+function titleCase(value) { return value.split("_").map(p => p ? p[0].toUpperCase() + p.slice(1) : p).join(" "); }
+function baseVoiceName(v) { return titleCase(v.id.split("_").slice(1).join("_")); }
+function genderLabel(g) { return g === "F" ? "Feminina" : "Masculina"; }
+
+const savedVoice = localStorage.getItem("kpnc:selectedVoice");
+const initialVoice = VOICES.some(v => v.id === savedVoice) ? savedVoice : "pm_alex";
 const state = {
   view: "discovery",
-  selectedVoiceId: localStorage.getItem("kpnc:selectedVoice") || "pm_alex",
+  selectedVoiceId: initialVoice,
   language: "all",
   search: "",
-  favorites: new Set(readJSON("kpnc:favorites", [])),
+  favorites: new Set(readJSON("kpnc:favorites", []).filter(id => VOICES.some(v => v.id === id))),
   aliases: readJSON("kpnc:aliases", {}),
-  modelReady: false,
-  modelEngine: null,
   busy: false,
-  currentBlob: null,
-  currentUrl: null,
   worker: null,
   pending: new Map(),
-  loadWaiters: [],
+  englishReady: false,
+  portugueseReady: false,
+  modelEngine: null,
+  vozz: null,
+  vozzLoading: null,
+  currentBlob: null,
+  currentUrl: null,
   historyCount: 0,
 };
 
-function readJSON(key, fallback) {
-  try {
-    const value = JSON.parse(localStorage.getItem(key));
-    return value ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveJSON(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-function escapeHTML(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function titleCase(value) {
-  return value
-    .split("_")
-    .map((part) => part ? part[0].toUpperCase() + part.slice(1) : part)
-    .join(" ");
-}
-
-function baseVoiceName(voice) {
-  return titleCase(voice.id.split("_").slice(1).join("_"));
-}
-
-function voiceName(voice) {
-  const alias = state.aliases[voice.id]?.trim();
-  return alias || baseVoiceName(voice);
-}
-
-function voiceById(id) {
-  return VOICES.find((voice) => voice.id === id) || VOICES[0];
-}
-
+function voiceById(id) { return VOICES.find(v => v.id === id) || VOICES[0]; }
+function voiceName(v) { return state.aliases[v.id]?.trim() || baseVoiceName(v); }
 function voiceColors(id) {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  let hash = 0; for (const c of id) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
   return COLOR_PAIRS[hash % COLOR_PAIRS.length];
 }
-
-function voiceInitials(voice) {
-  const name = voiceName(voice);
-  const parts = name.split(/\s+/).filter(Boolean);
-  return (parts[0]?.[0] || "V") + (parts[1]?.[0] || parts[0]?.[1] || "");
+function voiceInitials(v) {
+  const p = voiceName(v).split(/\s+/).filter(Boolean);
+  return (p[0]?.[0] || "V") + (p[1]?.[0] || p[0]?.[1] || "");
 }
-
-function genderLabel(gender) {
-  return gender === "F" ? "Feminina" : "Masculina";
-}
-
-function voiceMatches(voice) {
-  if (state.language !== "all" && voice.language !== state.language) return false;
+function voiceMatches(v) {
+  if (state.language !== "all" && v.language !== state.language) return false;
   if (!state.search) return true;
-  const lang = LANGUAGES[voice.language]?.name || "";
-  const haystack = `${voiceName(voice)} ${baseVoiceName(voice)} ${voice.id} ${lang} ${genderLabel(voice.gender)}`.toLowerCase();
-  return haystack.includes(state.search.toLowerCase());
+  const hay = `${voiceName(v)} ${baseVoiceName(v)} ${v.id} ${LANGUAGES[v.language].name} ${genderLabel(v.gender)}`.toLowerCase();
+  return hay.includes(state.search.toLowerCase());
 }
-
 function sortedVoices() {
-  return [...VOICES].sort((a, b) => {
-    const ap = a.language === "p" ? 2 : FEATURED.has(a.id) ? 1 : 0;
-    const bp = b.language === "p" ? 2 : FEATURED.has(b.id) ? 1 : 0;
+  return [...VOICES].sort((a,b) => {
+    const ap = a.language === "p" ? 3 : FEATURED.has(a.id) ? 1 : 0;
+    const bp = b.language === "p" ? 3 : FEATURED.has(b.id) ? 1 : 0;
     return bp - ap || voiceName(a).localeCompare(voiceName(b), "pt-BR");
   });
 }
 
-function voiceCardHTML(voice) {
-  const [v1, v2] = voiceColors(voice.id);
-  const favorite = state.favorites.has(voice.id);
-  const lang = LANGUAGES[voice.language];
-  return `
-    <article class="voice-card ${state.selectedVoiceId === voice.id ? "selected" : ""}" data-voice-card="${voice.id}" style="--v1:${v1};--v2:${v2}">
-      <div class="voice-art">
-        <span class="voice-monogram">${escapeHTML(voiceInitials(voice))}</span>
-        <button class="voice-play" data-preview-voice="${voice.id}" aria-label="Ouvir prévia de ${escapeHTML(voiceName(voice))}">▶</button>
-      </div>
-      <div class="voice-meta">
-        <div style="min-width:0">
-          <div class="voice-name">${escapeHTML(voiceName(voice))}</div>
-          <div class="voice-sub">${lang.flag} ${escapeHTML(lang.name)} · ${genderLabel(voice.gender)}</div>
-        </div>
-        <button class="favorite-btn ${favorite ? "on" : ""}" data-favorite-voice="${voice.id}" aria-label="Favoritar">${favorite ? "♥" : "♡"}</button>
-      </div>
-    </article>`;
+function voiceCardHTML(v) {
+  const [v1,v2] = voiceColors(v.id), fav = state.favorites.has(v.id), lang = LANGUAGES[v.language];
+  return `<article class="voice-card ${state.selectedVoiceId === v.id ? "selected" : ""}" data-voice-card="${v.id}" style="--v1:${v1};--v2:${v2}">
+    <div class="voice-art"><span class="voice-monogram">${escapeHTML(voiceInitials(v))}</span><button class="voice-play" data-preview-voice="${v.id}" aria-label="Ouvir prévia de ${escapeHTML(voiceName(v))}">▶</button></div>
+    <div class="voice-meta"><div style="min-width:0"><div class="voice-name">${escapeHTML(voiceName(v))}</div><div class="voice-sub">${lang.flag} ${escapeHTML(lang.name)} · ${genderLabel(v.gender)}</div></div><button class="favorite-btn ${fav ? "on" : ""}" data-favorite-voice="${v.id}" aria-label="Favoritar">${fav ? "♥" : "♡"}</button></div>
+  </article>`;
 }
-
 function renderLanguageFilters() {
-  const order = ["all", "p", "a", "b", "e", "f", "i", "j", "z", "h"];
-  $("#languageFilters").innerHTML = order.map((code) => {
-    const item = LANGUAGES[code];
-    return `<button class="filter-chip ${state.language === code ? "active" : ""}" data-language="${code}">${item.flag} ${escapeHTML(item.name)}</button>`;
-  }).join("");
+  $("#languageFilters").innerHTML = ["all","p","a","b"].map(code => `<button class="filter-chip ${state.language === code ? "active" : ""}" data-language="${code}">${LANGUAGES[code].flag} ${LANGUAGES[code].name}</button>`).join("");
 }
-
 function renderDiscovery() {
   const voices = sortedVoices().filter(voiceMatches);
-  $("#voiceGrid").innerHTML = voices.length ? voices.map(voiceCardHTML).join("") : `<div class="empty" style="grid-column:1/-1">Nenhuma voz encontrada com esses filtros.</div>`;
+  $("#voiceGrid").innerHTML = voices.length ? voices.map(voiceCardHTML).join("") : `<div class="empty" style="grid-column:1/-1">Nenhuma voz encontrada.</div>`;
   $("#voiceCountText").textContent = `${voices.length} ${voices.length === 1 ? "voz" : "vozes"} exibidas`;
   renderLanguageFilters();
 }
-
 function renderFavorites() {
-  const voices = sortedVoices().filter((voice) => state.favorites.has(voice.id) && voiceMatches(voice));
+  const voices = sortedVoices().filter(v => state.favorites.has(v.id) && voiceMatches(v));
   $("#favoritesGrid").innerHTML = voices.length ? voices.map(voiceCardHTML).join("") : `<div class="empty" style="grid-column:1/-1">Você ainda não favoritou nenhuma voz.</div>`;
 }
-
 function renderSelectedVoice() {
-  const voice = voiceById(state.selectedVoiceId);
-  const [v1, v2] = voiceColors(voice.id);
-  const lang = LANGUAGES[voice.language];
-  $("#selectedVoicePanel").innerHTML = `
-    <div class="selected-voice-art" style="--v1:${v1};--v2:${v2}"><strong>${escapeHTML(voiceInitials(voice))}</strong></div>
-    <div class="selected-title">${escapeHTML(voiceName(voice))}</div>
-    <div class="selected-sub">${lang.flag} ${escapeHTML(lang.name)} · ${genderLabel(voice.gender)} · ${escapeHTML(voice.id)}</div>
-    <div class="stats-grid">
-      <div class="stat"><strong>${lang.flag}</strong><span>idioma</span></div>
-      <div class="stat"><strong>${voice.gender}</strong><span>perfil</span></div>
-      <div class="stat"><strong>${state.favorites.has(voice.id) ? "♥" : "♡"}</strong><span>favorita</span></div>
-    </div>
-    <button class="secondary-btn" data-toggle-selected-favorite style="width:100%;margin-top:12px">${state.favorites.has(voice.id) ? "Remover das favoritas" : "Adicionar às favoritas"}</button>
-  `;
-  $("#aliasInput").value = state.aliases[voice.id] || "";
+  const v = voiceById(state.selectedVoiceId), [v1,v2] = voiceColors(v.id), lang = LANGUAGES[v.language];
+  $("#selectedVoicePanel").innerHTML = `<div class="selected-voice-art" style="--v1:${v1};--v2:${v2}"><strong>${escapeHTML(voiceInitials(v))}</strong></div><div class="selected-title">${escapeHTML(voiceName(v))}</div><div class="selected-sub">${lang.flag} ${lang.name} · ${genderLabel(v.gender)} · ${v.id}</div><div class="stats-grid"><div class="stat"><strong>${lang.flag}</strong><span>idioma</span></div><div class="stat"><strong>${v.gender}</strong><span>perfil</span></div><div class="stat"><strong>${state.favorites.has(v.id) ? "♥" : "♡"}</strong><span>favorita</span></div></div><button class="secondary-btn" data-toggle-selected-favorite style="width:100%;margin-top:12px">${state.favorites.has(v.id) ? "Remover das favoritas" : "Adicionar às favoritas"}</button>`;
+  $("#aliasInput").value = state.aliases[v.id] || "";
 }
-
-function renderStats() {
-  $("#favStat").textContent = state.favorites.size;
-  $("#historyStat").textContent = state.historyCount;
+function renderStats() { $("#favStat").textContent = state.favorites.size; $("#historyStat").textContent = state.historyCount; }
+function selectVoice(id, goStudio=false) {
+  if (!VOICES.some(v => v.id === id)) return;
+  state.selectedVoiceId = id; localStorage.setItem("kpnc:selectedVoice", id);
+  renderDiscovery(); renderFavorites(); renderSelectedVoice(); if (goStudio) navigateTo("studio");
 }
-
-function selectVoice(id, goToStudio = false) {
-  if (!VOICES.some((voice) => voice.id === id)) return;
-  state.selectedVoiceId = id;
-  localStorage.setItem("kpnc:selectedVoice", id);
-  renderDiscovery();
-  renderFavorites();
-  renderSelectedVoice();
-  if (goToStudio) navigateTo("studio");
-}
-
 function toggleFavorite(id) {
-  if (state.favorites.has(id)) state.favorites.delete(id);
-  else state.favorites.add(id);
-  saveJSON("kpnc:favorites", [...state.favorites]);
-  renderDiscovery();
-  renderFavorites();
-  renderSelectedVoice();
-  renderStats();
+  state.favorites.has(id) ? state.favorites.delete(id) : state.favorites.add(id);
+  saveJSON("kpnc:favorites", [...state.favorites]); renderDiscovery(); renderFavorites(); renderSelectedVoice(); renderStats();
 }
-
 function navigateTo(view) {
-  state.view = view;
-  $$(".view").forEach((node) => node.classList.toggle("active", node.id === `view-${view}`));
-  $$("[data-view-target]").forEach((button) => button.classList.toggle("active", button.dataset.viewTarget === view));
-  $("#sidebar").classList.remove("open");
-  if (view === "history") renderHistory();
-  if (view === "favorites") renderFavorites();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  state.view = view; $$(".view").forEach(n => n.classList.toggle("active", n.id === `view-${view}`));
+  $$("[data-view-target]").forEach(b => b.classList.toggle("active", b.dataset.viewTarget === view));
+  $("#sidebar").classList.remove("open"); if (view === "history") renderHistory(); if (view === "favorites") renderFavorites(); window.scrollTo({top:0,behavior:"smooth"});
 }
 
-let toastTimer = null;
-function toast(message, kind = "normal") {
-  const node = $("#toast");
-  node.textContent = message;
-  node.classList.toggle("error", kind === "error");
-  node.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => node.classList.remove("show"), 3300);
-}
-
+let toastTimer;
+function toast(message, kind="normal") { const n=$("#toast"); n.textContent=message; n.classList.toggle("error",kind==="error"); n.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>n.classList.remove("show"),4200); }
 function updateEngineUI(status, message) {
-  const pill = $("#enginePill");
-  if (status === "ready") {
-    pill.textContent = `● ${state.modelEngine}`;
-    pill.className = "engine-pill ready";
-    $("#settingsEngine").textContent = state.modelEngine || "Pronta";
-  } else if (status === "busy") {
-    pill.textContent = message || "Carregando IA…";
-    pill.className = "engine-pill busy";
-  } else {
-    pill.textContent = message || "IA não carregada";
-    pill.className = "engine-pill";
-  }
+  const pill=$("#enginePill");
+  if(status==="ready"){ pill.textContent=`● ${message || state.modelEngine || "IA pronta"}`; pill.className="engine-pill ready"; $("#settingsEngine").textContent=message || state.modelEngine || "Pronta"; }
+  else if(status==="busy"){ pill.textContent=message || "Carregando IA…"; pill.className="engine-pill busy"; }
+  else { pill.textContent=message || "IA não carregada"; pill.className="engine-pill"; }
 }
+function updateProgress(progress,label){ const t=$("#progressTrack"),b=$("#progressBar"); if(progress==null){t.classList.remove("visible");b.style.width="0%";}else{t.classList.add("visible");b.style.width=`${Math.max(0,Math.min(100,progress))}%`;} if(label) $("#generationStatus").textContent=label; }
+function setBusyUI(b){ state.busy=b; $("#generateBtn").disabled=b; $("#previewSelectedBtn").disabled=b; $$("[data-preview-voice]").forEach(x=>x.disabled=b); }
 
-function updateProgress(progress, label) {
-  const track = $("#progressTrack");
-  const bar = $("#progressBar");
-  if (progress == null) {
-    track.classList.remove("visible");
-    bar.style.width = "0%";
-  } else {
-    track.classList.add("visible");
-    bar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
-  }
-  if (label) $("#generationStatus").textContent = label;
-}
-
-function getWorker() {
-  if (state.worker) return state.worker;
-  const worker = new Worker("./tts-worker.js", { type: "module" });
-  state.worker = worker;
-
-  worker.addEventListener("message", (event) => {
-    const data = event.data ?? {};
-    if (data.type === "loading") {
-      updateEngineUI("busy", data.message || "Carregando IA…");
-      $("#generationStatus").textContent = data.message || "Carregando IA…";
-      return;
-    }
-    if (data.type === "load-progress") {
-      const label = data.file ? `Baixando ${data.file}${data.progress != null ? ` · ${data.progress}%` : ""}` : "Baixando modelo…";
-      updateProgress(data.progress, label);
-      return;
-    }
-    if (data.type === "fallback") {
-      updateEngineUI("busy", "Modo compatível…");
-      $("#generationStatus").textContent = data.message || "Tentando modo compatível…";
-      return;
-    }
-    if (data.type === "ready") {
-      state.modelReady = true;
-      state.modelEngine = data.engine || "Kokoro";
-      updateEngineUI("ready");
-      updateProgress(null, "IA carregada. Pronto para gerar.");
-      const waiters = state.loadWaiters.splice(0);
-      waiters.forEach(({ resolve }) => resolve(state.modelEngine));
-      return;
-    }
-    if (data.type === "generating") {
-      $("#generationStatus").textContent = "Gerando áudio…";
-      updateEngineUI("busy", "Gerando…");
-      return;
-    }
-    if (data.type === "result") {
-      const request = state.pending.get(data.requestId);
-      if (request) {
-        state.pending.delete(data.requestId);
-        request.resolve(data.blob);
-      }
-      state.busy = false;
-      setBusyUI(false);
-      updateEngineUI("ready");
-      $("#generationStatus").textContent = "Áudio gerado com sucesso.";
-      return;
-    }
-    if (data.type === "error") {
-      const message = friendlyError(data.message || "Erro desconhecido ao gerar áudio.");
-      if (data.requestId && state.pending.has(data.requestId)) {
-        const request = state.pending.get(data.requestId);
-        state.pending.delete(data.requestId);
-        request.reject(new Error(message));
-      } else {
-        const waiters = state.loadWaiters.splice(0);
-        waiters.forEach(({ reject }) => reject(new Error(message)));
-      }
-      state.busy = false;
-      setBusyUI(false);
-      updateProgress(null, message);
-      updateEngineUI(state.modelReady ? "ready" : "idle", state.modelReady ? undefined : "Falha ao carregar");
-    }
+function getWorker(){
+  if(state.worker) return state.worker;
+  const w=new Worker("./tts-worker.js?v=6",{type:"module"}); state.worker=w;
+  w.addEventListener("message",e=>{
+    const d=e.data||{};
+    if(d.type==="loading"){ updateEngineUI("busy",d.message); updateProgress(null,d.message); }
+    if(d.type==="load-progress"){ updateProgress(d.progress,d.file?`Baixando ${d.file}${d.progress!=null?` · ${d.progress}%`:""}`:"Baixando modelo…"); }
+    if(d.type==="ready"){ state.englishReady=true; state.modelEngine=d.engine||"Kokoro · WASM"; updateEngineUI("ready",state.modelEngine); updateProgress(null,"IA carregada. Pronto para gerar."); }
+    if(d.type==="generating"){ updateEngineUI("busy","Gerando…"); $("#generationStatus").textContent="Gerando áudio…"; }
+    if(d.type==="result"){ const req=state.pending.get(d.requestId); if(req){state.pending.delete(d.requestId);req.resolve(d.blob);} setBusyUI(false); updateEngineUI("ready",d.engine||"Kokoro · WASM"); $("#generationStatus").textContent="Áudio gerado com sucesso."; }
+    if(d.type==="error"){ const req=state.pending.get(d.requestId); if(req){state.pending.delete(d.requestId);req.reject(new Error(d.message));} setBusyUI(false); updateEngineUI("idle","Falha ao carregar"); updateProgress(null,d.message); }
   });
-
-  worker.addEventListener("error", (event) => {
-    const message = friendlyError(event.message || "Falha no Web Worker de voz.");
-    state.busy = false;
-    setBusyUI(false);
-    toast(message, "error");
-  });
-
-  return worker;
+  w.addEventListener("error",e=>{ setBusyUI(false); toast(e.message||"Falha no motor de voz.","error"); });
+  return w;
 }
 
-function friendlyError(message) {
-  const text = String(message || "");
-  if (/memory|allocation|out of memory/i.test(text)) return "O navegador ficou sem memória para carregar o modelo. Feche abas pesadas e tente novamente.";
-  if (/fetch|network|failed to load|cdn|connection/i.test(text)) return "Não foi possível baixar o modelo. Verifique a internet e tente novamente no Chrome ou Edge.";
-  if (/webgpu/i.test(text)) return "WebGPU não funcionou neste navegador. O app tentou o modo compatível automaticamente.";
-  return text;
+async function ensurePortugueseEngine(){
+  if(state.vozz) return state.vozz;
+  if(state.vozzLoading) return state.vozzLoading;
+  state.vozzLoading=(async()=>{
+    updateEngineUI("busy","Carregando motor PT-BR…"); updateProgress(2,"Preparando português brasileiro…");
+    const mod=await import("https://cdn.jsdelivr.net/npm/@pedrobef/vozz@0.2.7/+esm");
+    const Vozz=mod.Vozz || mod.default;
+    const instance=await Vozz.carregar({
+      dispositivo:"wasm", precisao:"q8",
+      aoProgredir:(p)=>{ const raw=p?.progresso; const pct=typeof raw==="number"?Math.round(raw*100):null; updateProgress(pct,p?.arquivo?`Baixando ${p.arquivo}${pct!=null?` · ${pct}%`:""}`:"Carregando modelo PT-BR…"); }
+    });
+    state.vozz=instance; state.portugueseReady=true; state.modelEngine="Vozz/Kokoro · PT-BR"; updateEngineUI("ready",state.modelEngine); updateProgress(null,"Motor PT-BR carregado."); return instance;
+  })();
+  try{return await state.vozzLoading;}finally{state.vozzLoading=null;}
 }
 
-function ensureModelLoaded() {
-  if (state.modelReady) return Promise.resolve(state.modelEngine);
-  const worker = getWorker();
-  return new Promise((resolve, reject) => {
-    state.loadWaiters.push({ resolve, reject });
-    if (state.loadWaiters.length === 1) worker.postMessage({ type: "load" });
-  });
+async function requestEnglish(text,voice,speed){
+  setBusyUI(true); const id=crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`; const w=getWorker();
+  return new Promise((resolve,reject)=>{state.pending.set(id,{resolve,reject});w.postMessage({type:"generate",requestId:id,text,voice,speed});});
 }
-
-function requestGeneration(text, voice, speed = 1) {
-  if (state.busy) return Promise.reject(new Error("Já existe uma geração em andamento."));
-  state.busy = true;
+async function requestPortuguese(text,voice,speed){
   setBusyUI(true);
-  const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-  const worker = getWorker();
-  return new Promise((resolve, reject) => {
-    state.pending.set(requestId, { resolve, reject });
-    worker.postMessage({ type: "generate", requestId, text, voice, speed });
-  });
+  try{
+    const engine=await ensurePortugueseEngine(); updateEngineUI("busy","Gerando PT-BR…"); $("#generationStatus").textContent="Gerando áudio em português…";
+    const audio=await engine.falar(text,{voz:voice,velocidade:speed});
+    const blob=audio.paraBlob ? audio.paraBlob() : new Blob([audio.paraWav()],{type:"audio/wav"});
+    state.modelEngine="Vozz/Kokoro · PT-BR"; updateEngineUI("ready",state.modelEngine); $("#generationStatus").textContent="Áudio gerado com sucesso."; return blob;
+  } finally { setBusyUI(false); }
+}
+async function requestGeneration(text,voice,speed=1){
+  const clean=String(text||"").trim(); if(!clean) throw new Error("Digite algum texto antes de gerar."); if(clean.length>1200) throw new Error("Nesta versão, cada geração aceita até 1.200 caracteres.");
+  return isPortuguese(voice)?requestPortuguese(clean,voice,speed):requestEnglish(clean,voice,speed);
 }
 
-function setBusyUI(busy) {
-  $("#generateBtn").disabled = busy;
-  $("#previewSelectedBtn").disabled = busy;
-  $$("[data-preview-voice]").forEach((button) => { button.disabled = busy; });
+async function previewVoice(id){ if(state.busy)return; const v=voiceById(id),button=$(`[data-preview-voice="${CSS.escape(id)}"]`),old=button?.textContent; if(button)button.textContent="…"; try{const blob=await requestGeneration(PREVIEW_TEXT[v.language],v.id,1);const url=URL.createObjectURL(blob),a=new Audio(url);a.addEventListener("ended",()=>URL.revokeObjectURL(url),{once:true});a.addEventListener("error",()=>URL.revokeObjectURL(url),{once:true});await a.play();}catch(e){toast(e.message||String(e),"error");}finally{if(button)button.textContent=old||"▶";}}
+async function generateMain(){ const v=voiceById(state.selectedVoiceId),text=$("#speechText").value.trim(),speed=Number($("#speedRange").value); if(!text){toast("Digite algum texto antes de gerar.","error");$("#speechText").focus();return;} try{const blob=await requestGeneration(text,v.id,speed);showCurrentResult(blob);await addHistory({id:crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`,createdAt:Date.now(),voiceId:v.id,text,speed,blob});toast("Áudio gerado e salvo no histórico.");}catch(e){setBusyUI(false);toast(e.message||String(e),"error");}}
+function showCurrentResult(blob){ if(state.currentUrl)URL.revokeObjectURL(state.currentUrl);state.currentBlob=blob;state.currentUrl=URL.createObjectURL(blob);$("#resultAudio").src=state.currentUrl;$("#resultCard").classList.add("visible"); }
+function sanitizeFilename(v){return String(v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9-_]+/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"").slice(0,60)||"voz";}
+function downloadBlob(blob,filename){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+
+const DB_NAME="kpnc-voice-studio-db",STORE="generations";let dbPromise;
+function openDB(){if(dbPromise)return dbPromise;dbPromise=new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(STORE))r.result.createObjectStore(STORE,{keyPath:"id"});};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});return dbPromise;}
+async function getHistory(){const db=await openDB();return new Promise((res,rej)=>{const r=db.transaction(STORE,"readonly").objectStore(STORE).getAll();r.onsuccess=()=>res((r.result||[]).sort((a,b)=>b.createdAt-a.createdAt));r.onerror=()=>rej(r.error);});}
+async function addHistory(item){const db=await openDB();await new Promise((res,rej)=>{const r=db.transaction(STORE,"readwrite").objectStore(STORE).put(item);r.onsuccess=res;r.onerror=()=>rej(r.error);});const items=await getHistory();if(items.length>30){const tx=db.transaction(STORE,"readwrite"),s=tx.objectStore(STORE);items.slice(30).forEach(i=>s.delete(i.id));await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}state.historyCount=Math.min(items.length,30);renderStats();}
+async function deleteHistoryItem(id){const db=await openDB();await new Promise((res,rej)=>{const r=db.transaction(STORE,"readwrite").objectStore(STORE).delete(id);r.onsuccess=res;r.onerror=()=>rej(r.error);});await renderHistory();}
+async function clearHistory(){const db=await openDB();await new Promise((res,rej)=>{const r=db.transaction(STORE,"readwrite").objectStore(STORE).clear();r.onsuccess=res;r.onerror=()=>rej(r.error);});state.historyCount=0;renderStats();await renderHistory();}
+function formatDate(ts){return new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short"}).format(new Date(ts));}
+async function renderHistory(){const list=$("#historyList");list.innerHTML=`<div class="empty">Carregando histórico…</div>`;try{const items=await getHistory();state.historyCount=items.length;renderStats();if(!items.length){list.innerHTML=`<div class="empty">Nenhum áudio gerado ainda.</div>`;return;}list.innerHTML=items.map(i=>{const v=voiceById(i.voiceId);return `<article class="history-item"><div><div class="history-voice">${escapeHTML(voiceName(v))}</div><div class="history-date">${escapeHTML(formatDate(i.createdAt))} · ${Number(i.speed||1).toFixed(2)}×</div></div><div class="history-text" title="${escapeHTML(i.text)}">${escapeHTML(i.text)}</div><div class="history-actions"><button class="icon-btn" data-history-play="${escapeHTML(i.id)}">▶</button><button class="icon-btn" data-history-download="${escapeHTML(i.id)}">↓</button><button class="icon-btn" data-history-delete="${escapeHTML(i.id)}">×</button></div></article>`;}).join("");list._historyItems=items;}catch{list.innerHTML=`<div class="empty">Não foi possível abrir o histórico local.</div>`;}}
+function getHistoryItemFromRendered(id){return $("#historyList")._historyItems?.find(i=>i.id===id);}
+
+async function loadSelectedEngine(){const v=voiceById(state.selectedVoiceId);if(isPortuguese(v.id)){if(state.portugueseReady){toast("Motor PT-BR já está carregado.");return;}try{await ensurePortugueseEngine();toast("Motor PT-BR carregado.");}catch(e){toast(e.message||String(e),"error");}}else{if(state.englishReady){toast("Motor inglês já está carregado.");return;}getWorker().postMessage({type:"load"});toast("Carregando motor inglês…");}}
+
+function patchStaticCopy(){
+  const hero=$("#view-discovery .hero p");if(hero)hero.textContent="31 vozes realmente compatíveis nesta build: 3 em português brasileiro e 28 em inglês. Tudo roda no navegador, sem servidor de IA e sem créditos por geração.";
+  const note=$("#view-settings .settings-card:first-child p");if(note)note.textContent="Dois motores locais: Vozz/Kokoro para PT-BR e Kokoro.js para inglês, ambos executados no navegador.";
+  const rows=$$("#view-settings .settings-card:first-child .info-row strong");if(rows[1])rows[1].textContent="31";if(rows[2])rows[2].textContent="3 vozes";
+  const lim=$("#view-settings .settings-card:last-child p");if(lim)lim.textContent="Esta build estática oferece 3 vozes Kokoro em pt-BR e 28 vozes Kokoro em inglês. Clonagem por áudio ainda não está habilitada.";
 }
 
-async function previewVoice(id) {
-  if (state.busy) return;
-  const voice = voiceById(id);
-  const button = $(`[data-preview-voice="${CSS.escape(id)}"]`);
-  const previous = button?.textContent;
-  if (button) button.textContent = "…";
-  try {
-    const blob = await requestGeneration(PREVIEW_TEXT[voice.language], voice.id, 1);
-    const url = URL.createObjectURL(blob);
-    const player = new Audio(url);
-    player.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
-    player.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
-    await player.play();
-  } catch (error) {
-    toast(error.message, "error");
-  } finally {
-    if (button) button.textContent = previous || "▶";
-  }
+function setupEvents(){
+  $$("[data-view-target]").forEach(b=>b.addEventListener("click",()=>navigateTo(b.dataset.viewTarget)));$("#heroStudio").addEventListener("click",()=>navigateTo("studio"));$("#mobileMenu").addEventListener("click",()=>$("#sidebar").classList.toggle("open"));
+  $("#globalSearch").addEventListener("input",e=>{state.search=e.target.value.trim();renderDiscovery();renderFavorites();if(!["discovery","favorites"].includes(state.view)&&state.search)navigateTo("discovery");});
+  $("#languageFilters").addEventListener("click",e=>{const b=e.target.closest("[data-language]");if(!b)return;state.language=b.dataset.language;renderDiscovery();});
+  const grid=e=>{const f=e.target.closest("[data-favorite-voice]");if(f){e.stopPropagation();toggleFavorite(f.dataset.favoriteVoice);return;}const p=e.target.closest("[data-preview-voice]");if(p){e.stopPropagation();previewVoice(p.dataset.previewVoice);return;}const c=e.target.closest("[data-voice-card]");if(c)selectVoice(c.dataset.voiceCard,true);};$("#voiceGrid").addEventListener("click",grid);$("#favoritesGrid").addEventListener("click",grid);
+  $("#selectedVoicePanel").addEventListener("click",e=>{if(e.target.closest("[data-toggle-selected-favorite]"))toggleFavorite(state.selectedVoiceId);});
+  $("#speechText").addEventListener("input",e=>$("#charCount").textContent=e.target.value.length);$("#speedRange").addEventListener("input",e=>$("#speedValue").textContent=`${Number(e.target.value).toFixed(2)}×`);$("#generateBtn").addEventListener("click",generateMain);$("#previewSelectedBtn").addEventListener("click",()=>previewVoice(state.selectedVoiceId));
+  $("#downloadCurrentBtn").addEventListener("click",()=>{if(!state.currentBlob)return;const v=voiceById(state.selectedVoiceId);downloadBlob(state.currentBlob,`${sanitizeFilename(voiceName(v))}-${Date.now()}.wav`);});
+  $("#loadModelBtn").addEventListener("click",loadSelectedEngine);$("#settingsLoadBtn").addEventListener("click",loadSelectedEngine);
+  $("#saveAliasBtn").addEventListener("click",()=>{const x=$("#aliasInput").value.trim();x?state.aliases[state.selectedVoiceId]=x:delete state.aliases[state.selectedVoiceId];saveJSON("kpnc:aliases",state.aliases);renderDiscovery();renderFavorites();renderSelectedVoice();toast("Apelido salvo.");});
+  $("#resetAliasBtn").addEventListener("click",()=>{delete state.aliases[state.selectedVoiceId];saveJSON("kpnc:aliases",state.aliases);renderDiscovery();renderFavorites();renderSelectedVoice();toast("Nome original restaurado.");});
+  $("#clearHistoryBtn").addEventListener("click",async()=>{if(!confirm("Apagar todo o histórico local de áudios?"))return;try{await clearHistory();toast("Histórico apagado.");}catch{toast("Não foi possível limpar o histórico.","error");}});
+  $("#historyList").addEventListener("click",async e=>{const play=e.target.closest("[data-history-play]"),down=e.target.closest("[data-history-download]"),del=e.target.closest("[data-history-delete]");const id=play?.dataset.historyPlay||down?.dataset.historyDownload||del?.dataset.historyDelete;if(!id)return;const item=getHistoryItemFromRendered(id);if(!item)return;if(play){const url=URL.createObjectURL(item.blob),a=new Audio(url);a.addEventListener("ended",()=>URL.revokeObjectURL(url),{once:true});a.play().catch(()=>toast("O navegador bloqueou a reprodução.","error"));}else if(down){const v=voiceById(item.voiceId);downloadBlob(item.blob,`${sanitizeFilename(voiceName(v))}-${item.createdAt}.wav`);}else if(del){await deleteHistoryItem(id);toast("Item removido do histórico.");}});
 }
 
-async function generateMain() {
-  const voice = voiceById(state.selectedVoiceId);
-  const text = $("#speechText").value.trim();
-  const speed = Number($("#speedRange").value);
-  if (!text) {
-    toast("Digite algum texto antes de gerar.", "error");
-    $("#speechText").focus();
-    return;
-  }
-  try {
-    const blob = await requestGeneration(text, voice.id, speed);
-    showCurrentResult(blob);
-    await addHistory({
-      id: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
-      createdAt: Date.now(),
-      voiceId: voice.id,
-      text,
-      speed,
-      blob,
-    });
-    toast("Áudio gerado e salvo no histórico.");
-  } catch (error) {
-    toast(error.message, "error");
-  }
-}
-
-function showCurrentResult(blob) {
-  if (state.currentUrl) URL.revokeObjectURL(state.currentUrl);
-  state.currentBlob = blob;
-  state.currentUrl = URL.createObjectURL(blob);
-  $("#resultAudio").src = state.currentUrl;
-  $("#resultCard").classList.add("visible");
-}
-
-function sanitizeFilename(value) {
-  return String(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9-_]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60) || "voz";
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-const DB_NAME = "kpnc-voice-studio-db";
-const STORE = "generations";
-let dbPromise = null;
-
-function openDB() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE)) {
-        request.result.createObjectStore(STORE, { keyPath: "id" });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-  return dbPromise;
-}
-
-async function getHistory() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const request = db.transaction(STORE, "readonly").objectStore(STORE).getAll();
-    request.onsuccess = () => resolve((request.result || []).sort((a, b) => b.createdAt - a.createdAt));
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function addHistory(item) {
-  const db = await openDB();
-  await new Promise((resolve, reject) => {
-    const request = db.transaction(STORE, "readwrite").objectStore(STORE).put(item);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
-  const items = await getHistory();
-  if (items.length > 30) {
-    const excess = items.slice(30);
-    const tx = db.transaction(STORE, "readwrite");
-    const store = tx.objectStore(STORE);
-    excess.forEach((entry) => store.delete(entry.id));
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  }
-  state.historyCount = Math.min(items.length, 30);
-  renderStats();
-}
-
-async function deleteHistoryItem(id) {
-  const db = await openDB();
-  await new Promise((resolve, reject) => {
-    const request = db.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
-    request.onsuccess = resolve;
-    request.onerror = () => reject(request.error);
-  });
-  await renderHistory();
-}
-
-async function clearHistory() {
-  const db = await openDB();
-  await new Promise((resolve, reject) => {
-    const request = db.transaction(STORE, "readwrite").objectStore(STORE).clear();
-    request.onsuccess = resolve;
-    request.onerror = () => reject(request.error);
-  });
-  state.historyCount = 0;
-  renderStats();
-  await renderHistory();
-}
-
-function formatDate(timestamp) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(timestamp));
-}
-
-async function renderHistory() {
-  const list = $("#historyList");
-  list.innerHTML = `<div class="empty">Carregando histórico…</div>`;
-  try {
-    const items = await getHistory();
-    state.historyCount = items.length;
-    renderStats();
-    if (!items.length) {
-      list.innerHTML = `<div class="empty">Nenhum áudio gerado ainda.</div>`;
-      return;
-    }
-    list.innerHTML = items.map((item) => {
-      const voice = voiceById(item.voiceId);
-      return `
-        <article class="history-item">
-          <div>
-            <div class="history-voice">${escapeHTML(voiceName(voice))}</div>
-            <div class="history-date">${escapeHTML(formatDate(item.createdAt))} · ${Number(item.speed || 1).toFixed(2)}×</div>
-          </div>
-          <div class="history-text" title="${escapeHTML(item.text)}">${escapeHTML(item.text)}</div>
-          <div class="history-actions">
-            <button class="icon-btn" data-history-play="${escapeHTML(item.id)}" aria-label="Reproduzir">▶</button>
-            <button class="icon-btn" data-history-download="${escapeHTML(item.id)}" aria-label="Baixar">↓</button>
-            <button class="icon-btn" data-history-delete="${escapeHTML(item.id)}" aria-label="Excluir">×</button>
-          </div>
-        </article>`;
-    }).join("");
-    list._historyItems = items;
-  } catch (error) {
-    list.innerHTML = `<div class="empty">Não foi possível abrir o histórico local.</div>`;
-  }
-}
-
-function getHistoryItemFromRendered(id) {
-  return $("#historyList")._historyItems?.find((item) => item.id === id);
-}
-
-function setupEvents() {
-  $$("[data-view-target]").forEach((button) => button.addEventListener("click", () => navigateTo(button.dataset.viewTarget)));
-  $("#heroStudio").addEventListener("click", () => navigateTo("studio"));
-  $("#mobileMenu").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
-
-  $("#globalSearch").addEventListener("input", (event) => {
-    state.search = event.target.value.trim();
-    renderDiscovery();
-    renderFavorites();
-    if (state.view !== "discovery" && state.view !== "favorites" && state.search) navigateTo("discovery");
-  });
-
-  $("#languageFilters").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-language]");
-    if (!button) return;
-    state.language = button.dataset.language;
-    renderDiscovery();
-  });
-
-  const gridHandler = (event) => {
-    const favorite = event.target.closest("[data-favorite-voice]");
-    if (favorite) {
-      event.stopPropagation();
-      toggleFavorite(favorite.dataset.favoriteVoice);
-      return;
-    }
-    const preview = event.target.closest("[data-preview-voice]");
-    if (preview) {
-      event.stopPropagation();
-      previewVoice(preview.dataset.previewVoice);
-      return;
-    }
-    const card = event.target.closest("[data-voice-card]");
-    if (card) selectVoice(card.dataset.voiceCard, true);
-  };
-  $("#voiceGrid").addEventListener("click", gridHandler);
-  $("#favoritesGrid").addEventListener("click", gridHandler);
-
-  $("#selectedVoicePanel").addEventListener("click", (event) => {
-    if (event.target.closest("[data-toggle-selected-favorite]")) toggleFavorite(state.selectedVoiceId);
-  });
-
-  $("#speechText").addEventListener("input", (event) => { $("#charCount").textContent = event.target.value.length; });
-  $("#speedRange").addEventListener("input", (event) => { $("#speedValue").textContent = `${Number(event.target.value).toFixed(2)}×`; });
-  $("#generateBtn").addEventListener("click", generateMain);
-  $("#previewSelectedBtn").addEventListener("click", () => previewVoice(state.selectedVoiceId));
-
-  $("#downloadCurrentBtn").addEventListener("click", () => {
-    if (!state.currentBlob) return;
-    const voice = voiceById(state.selectedVoiceId);
-    downloadBlob(state.currentBlob, `${sanitizeFilename(voiceName(voice))}-${Date.now()}.wav`);
-  });
-
-  const loadClick = async () => {
-    if (state.modelReady) {
-      toast(`IA já carregada em ${state.modelEngine}.`);
-      return;
-    }
-    try {
-      await ensureModelLoaded();
-      toast(`IA carregada: ${state.modelEngine}.`);
-    } catch (error) {
-      toast(error.message, "error");
-    }
-  };
-  $("#loadModelBtn").addEventListener("click", loadClick);
-  $("#settingsLoadBtn").addEventListener("click", loadClick);
-
-  $("#saveAliasBtn").addEventListener("click", () => {
-    const value = $("#aliasInput").value.trim();
-    if (value) state.aliases[state.selectedVoiceId] = value;
-    else delete state.aliases[state.selectedVoiceId];
-    saveJSON("kpnc:aliases", state.aliases);
-    renderDiscovery();
-    renderFavorites();
-    renderSelectedVoice();
-    toast("Apelido salvo.");
-  });
-
-  $("#resetAliasBtn").addEventListener("click", () => {
-    delete state.aliases[state.selectedVoiceId];
-    saveJSON("kpnc:aliases", state.aliases);
-    renderDiscovery();
-    renderFavorites();
-    renderSelectedVoice();
-    toast("Nome original restaurado.");
-  });
-
-  $("#clearHistoryBtn").addEventListener("click", async () => {
-    if (!confirm("Apagar todo o histórico local de áudios?")) return;
-    try {
-      await clearHistory();
-      toast("Histórico apagado.");
-    } catch (error) {
-      toast("Não foi possível limpar o histórico.", "error");
-    }
-  });
-
-  $("#historyList").addEventListener("click", async (event) => {
-    const play = event.target.closest("[data-history-play]");
-    const download = event.target.closest("[data-history-download]");
-    const del = event.target.closest("[data-history-delete]");
-    const id = play?.dataset.historyPlay || download?.dataset.historyDownload || del?.dataset.historyDelete;
-    if (!id) return;
-    const item = getHistoryItemFromRendered(id);
-    if (!item) return;
-
-    if (play) {
-      const url = URL.createObjectURL(item.blob);
-      const audio = new Audio(url);
-      audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
-      audio.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
-      audio.play().catch(() => toast("O navegador bloqueou a reprodução.", "error"));
-    } else if (download) {
-      const voice = voiceById(item.voiceId);
-      downloadBlob(item.blob, `${sanitizeFilename(voiceName(voice))}-${item.createdAt}.wav`);
-    } else if (del) {
-      await deleteHistoryItem(id);
-      toast("Item removido do histórico.");
-    }
-  });
-}
-
-async function init() {
-  renderDiscovery();
-  renderFavorites();
-  renderSelectedVoice();
-  renderStats();
-  setupEvents();
-  try {
-    const items = await getHistory();
-    state.historyCount = items.length;
-    renderStats();
-  } catch {
-    // IndexedDB can be unavailable in strict private modes; the rest of the app still works.
-  }
-}
-
+async function init(){patchStaticCopy();renderDiscovery();renderFavorites();renderSelectedVoice();renderStats();setupEvents();try{const items=await getHistory();state.historyCount=items.length;renderStats();}catch{} }
 init();
