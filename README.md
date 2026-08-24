@@ -1,139 +1,134 @@
 # KPNC Voice Studio
 
-Aplicação estática de text-to-speech que roda a inferência **no navegador**, usando Kokoro-82M v1.0 por meio de `kokoro-js`.
+KPNC Voice Studio combina TTS local no navegador com um engine opcional de conversão de voz no próprio computador.
 
-## O que esta versão faz
+Site publicado:
 
-- Catálogo com 54 vozes e 9 variantes de idioma.
+```text
+https://ainnchris.github.io/kpnciavoice/
+```
+
+## Recursos atuais
+
+### Vozes prontas
+
+- 31 vozes realmente compatíveis nesta build.
 - 3 vozes nativas de Português Brasileiro: `pf_dora`, `pm_alex`, `pm_santa`.
-- Pesquisa e filtros por idioma.
-- Favoritos salvos em `localStorage`.
-- Apelidos personalizados para cada voz.
+- 28 vozes em inglês pelo `kokoro-js`.
+- Pesquisa e filtros.
+- Favoritos e apelidos locais.
 - Geração TTS no navegador.
-- WebGPU quando disponível, com fallback para WASM.
-- Controle de velocidade de 0.50x a 2.00x.
-- Prévia de voz.
-- Download em WAV.
-- Histórico local de até 30 gerações usando IndexedDB.
-- Sem backend, banco remoto, conta, API key ou cobrança por geração.
+- Controle de velocidade.
+- Prévia e download WAV.
+- Histórico local em IndexedDB.
 
-## Importante
+O português usa `@pedrobef/vozz` + Kokoro; as vozes inglesas usam `kokoro-js`.
 
-Na primeira geração, o navegador precisa baixar os arquivos do modelo Kokoro. O tamanho depende da variante carregada e o navegador pode armazená-los em cache para usos posteriores.
+### Vozes personalizadas
 
-Esta build usa as vozes prontas do Kokoro. **Clonagem de voz a partir de um áudio não está incluída**. Para isso, uma versão futura pode integrar Fish Speech, Chatterbox, RVC ou outro backend/modelo compatível.
+A área **Personalizadas** integra o site ao **KPNC Voice Engine**, que roda em `localhost` e usa Seed-VC.
 
-## Navegadores recomendados
-
-Use uma versão recente de:
-
-1. Google Chrome
-2. Microsoft Edge
-
-WebGPU é usado quando funciona. Caso contrário, o aplicativo tenta WASM automaticamente.
-
-## Rodar no computador
-
-O projeto não tem etapa de build.
-
-### Opção A: Python
-
-Na pasta do projeto:
-
-```bash
-python -m http.server 8080
-```
-
-Abra:
+Fluxo:
 
 ```text
-http://localhost:8080
+Texto
+  ↓
+Vozz/Kokoro gera fala-base PT-BR no navegador
+  ↓
+KPNC Voice Engine em http://127.0.0.1:7865
+  ↓
+Seed-VC converte usando um áudio de referência
+  ↓
+WAV final
 ```
 
-### Opção B: VS Code
+Não é necessário treinar um modelo para cada nova referência. Para uma voz personalizada, basta cadastrar um trecho curto e limpo.
 
-Use uma extensão de servidor local, como Live Server, e abra `index.html` por HTTP.
+## Instalar o engine de vozes personalizadas no Windows
 
-> Não abra `index.html` diretamente com `file://`, porque Web Workers e módulos ES podem ser bloqueados pelo navegador.
+A instalação é feita uma vez.
 
-## Hospedar grátis no GitHub Pages
+1. Tenha **Python 3.10 64-bit** instalado.
+2. Entre na pasta `engine`.
+3. Abra `setup_windows.bat`.
+4. Aguarde a instalação do ambiente Python, PyTorch e Seed-VC.
+5. Depois, sempre que quiser usar vozes personalizadas, abra `start_windows.bat`.
+6. Deixe a janela aberta enquanto estiver usando a área **Personalizadas** do site.
 
-O projeto já contém `.github/workflows/pages.yml`.
-
-1. Crie um repositório **público** no GitHub.
-2. Envie todos os arquivos desta pasta para a raiz do repositório.
-3. Abra **Settings > Pages**.
-4. Em **Build and deployment > Source**, selecione **GitHub Actions**.
-5. Faça um push para a branch `main` se o workflow ainda não tiver executado.
-6. Aguarde o workflow `Deploy KPNC Voice Studio to Pages` ficar verde.
-7. O endereço publicado aparecerá em **Settings > Pages**.
-
-Não existe servidor de IA no GitHub. O GitHub hospeda somente os arquivos estáticos e o navegador do usuário executa a voz.
-
-## Hospedar grátis no Cloudflare Pages
-
-Este projeto também inclui `_headers` para habilitar cabeçalhos úteis a WebAssembly/WebGPU quando o host oferecer suporte.
-
-Configuração típica:
-
-- Framework preset: `None`
-- Build command: vazio
-- Output directory: `/` ou a raiz do projeto
-
-Como o site é inteiramente estático, não é necessário configurar Functions.
-
-## Estrutura
+O servidor local será iniciado em:
 
 ```text
-kpnc-voice-studio/
-├── .github/
-│   └── workflows/
-│       └── pages.yml
-├── docs/
-│   └── ROADMAP.md
-├── .nojekyll
-├── _headers
+http://127.0.0.1:7865
+```
+
+Detalhes adicionais estão em `engine/README.md`.
+
+### GPU
+
+Uma GPU NVIDIA compatível melhora muito o tempo de conversão. Sem NVIDIA, o instalador usa PyTorch CPU; a funcionalidade continua disponível, mas pode ficar lenta.
+
+## Áudio de referência
+
+Recomendado:
+
+- 5 a 30 segundos.
+- Uma pessoa falando sozinha.
+- Sem música.
+- Pouco ruído e eco.
+- Preferencialmente WAV ou FLAC.
+
+As referências ficam no computador local em `engine/data/voices/` e essa pasta está ignorada pelo Git.
+
+## Hospedagem
+
+O site continua inteiramente estático e pode ser hospedado de graça no GitHub Pages. O GitHub não executa Seed-VC; ele hospeda somente HTML/CSS/JS.
+
+A inferência pesada de vozes personalizadas acontece no computador onde `start_windows.bat` está rodando.
+
+## Estrutura principal
+
+```text
+kpnciavoice/
 ├── app.js
+├── custom-voices.js
+├── custom-voices.css
 ├── index.html
-├── LICENSE
-├── README.md
 ├── styles.css
-└── tts-worker.js
+├── tts-worker.js
+├── engine/
+│   ├── server.py
+│   ├── requirements.txt
+│   ├── setup_windows.bat
+│   ├── setup_windows.ps1
+│   ├── start_windows.bat
+│   └── README.md
+└── README.md
 ```
 
-## Dependências em runtime
-
-A única dependência JavaScript é importada pelo Web Worker com versão fixada:
+Pastas locais criadas pelo engine e ignoradas pelo Git:
 
 ```text
-kokoro-js@1.2.1
-```
-
-Modelo:
-
-```text
-onnx-community/Kokoro-82M-v1.0-ONNX
+engine/.venv/
+engine/seed-vc/
+engine/data/
 ```
 
 ## Privacidade
 
-- O texto enviado ao TTS é processado pelo modelo no navegador.
-- Os áudios do histórico são guardados em IndexedDB no dispositivo.
-- Favoritos e apelidos usam localStorage.
-- Na primeira utilização, o navegador acessa os CDNs necessários para obter o código da biblioteca e os arquivos públicos do modelo.
+- TTS comum é processado no navegador.
+- Favoritos e configurações ficam no navegador.
+- Referências de vozes personalizadas ficam no computador que executa o KPNC Voice Engine.
+- Durante a conversão, a fala-base viaja apenas da página para `127.0.0.1` no próprio computador.
+- Modelos e checkpoints públicos são baixados de seus provedores na primeira utilização.
 
-## Limitações conhecidas
+## Uso responsável
 
-- Até 1.200 caracteres por geração nesta versão, para reduzir travamentos em dispositivos mais modestos.
-- A velocidade depende do computador e do navegador.
-- WASM pode ser consideravelmente mais lento que WebGPU.
-- Não há clonagem de voz nesta build.
-- Não há conversão para MP3; a exportação é WAV para não adicionar outro encoder pesado ao navegador.
+Áudio sintético não deve ser apresentado como gravação autêntica de outra pessoa. Respeite direitos de voz, imagem, propriedade intelectual e as regras das plataformas onde o resultado for utilizado.
 
 ## Créditos
 
-- Kokoro-82M: Hexgrad e contribuidores, licença Apache-2.0.
-- `kokoro-js`: ecossistema Kokoro/Transformers.js, conforme a licença do projeto original.
-- KPNC Voice Studio: interface e integração deste projeto.
-
-Consulte as licenças dos modelos e bibliotecas antes de redistribuir ou usar comercialmente.
+- Kokoro-82M e ecossistema Kokoro.
+- `kokoro-js`.
+- `@pedrobef/vozz` para TTS pt-BR no navegador.
+- Seed-VC para conversão zero-shot de voz.
+- KPNC Voice Studio: interface e integração.
