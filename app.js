@@ -208,10 +208,9 @@ function getHistoryItemFromRendered(id){return $("#historyList")._historyItems?.
 async function loadSelectedEngine(){const v=voiceById(state.selectedVoiceId);if(isPortuguese(v.id)){if(state.portugueseReady){toast("Motor PT-BR já está carregado.");return;}try{await ensurePortugueseEngine();toast("Motor PT-BR carregado.");}catch(e){toast(e.message||String(e),"error");}}else{if(state.englishReady){toast("Motor inglês já está carregado.");return;}getWorker().postMessage({type:"load"});toast("Carregando motor inglês…");}}
 
 function patchStaticCopy(){
-  const hero=$("#view-discovery .hero p");if(hero)hero.textContent="31 vozes realmente compatíveis nesta build: 3 em português brasileiro e 28 em inglês. Tudo roda no navegador, sem servidor de IA e sem créditos por geração.";
-  const note=$("#view-settings .settings-card:first-child p");if(note)note.textContent="Dois motores locais: Vozz/Kokoro para PT-BR e Kokoro.js para inglês, ambos executados no navegador.";
+  const hero=$("#view-discovery .hero p");if(hero)hero.textContent="31 vozes compatíveis nesta build: 3 em português brasileiro e 28 em inglês. A área Personalizadas adiciona Seed-VC local para referências próprias sem servidor de GPU pago.";
+  const note=$("#view-settings .settings-card:first-child p");if(note)note.textContent="Dois motores TTS locais: Vozz/Kokoro para PT-BR e Kokoro.js para inglês, ambos executados no navegador.";
   const rows=$$("#view-settings .settings-card:first-child .info-row strong");if(rows[1])rows[1].textContent="31";if(rows[2])rows[2].textContent="3 vozes";
-  const lim=$("#view-settings .settings-card:last-child p");if(lim)lim.textContent="Esta build estática oferece 3 vozes Kokoro em pt-BR e 28 vozes Kokoro em inglês. Clonagem por áudio ainda não está habilitada.";
 }
 
 function setupEvents(){
