@@ -1,18 +1,23 @@
 import { Client, handle_file } from "https://cdn.jsdelivr.net/npm/@gradio/client@2.5.0/+esm";
 
-const $ = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
-const DEFAULT_SPACE = "Plachta/Seed-VC";
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+
+const DEFAULT_SPACE = "ResembleAI/Chatterbox-Multilingual-TTS";
+const CATALOG_URL = "./curated-voices.json";
+const DB_NAME = "kpnc-custom-voices-db";
+const STORE = "voices";
+
 const state = {
-  space: localStorage.getItem("kpnc:remoteSpace") || DEFAULT_SPACE,
+  space: localStorage.getItem("kpnc:chatterboxSpace") || DEFAULT_SPACE,
   client: null,
   endpoint: null,
   connected: false,
   connecting: null,
   voices: [],
+  curated: [],
+  local: [],
   selectedId: localStorage.getItem("kpnc:customVoiceId") || null,
-  base: null,
-  baseLoading: null,
   busy: false,
   currentBlob: null,
   currentUrl: null,
@@ -27,239 +32,474 @@ function toast(message, error = false) {
   el.classList.toggle("error", error);
   el.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), 5000);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 4500);
 }
 
-const DB = "kpnc-custom-voices-db", STORE = "voices";
-let dbPromise;
-function db() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const r = indexedDB.open(DB, 1);
-    r.onupgradeneeded = () => {
-      if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE, { keyPath: "id" });
-    };
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-  });
-  return dbPromise;
-}
-async function dbAll() {
-  const d = await db();
-  return new Promise((resolve, reject) => {
-    const r = d.transaction(STORE, "readonly").objectStore(STORE).getAll();
-    r.onsuccess = () => resolve((r.result || []).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))));
-    r.onerror = () => reject(r.error);
-  });
-}
-async function dbPut(v) {
-  const d = await db();
-  return new Promise((resolve, reject) => {
-    const r = d.transaction(STORE, "readwrite").objectStore(STORE).put(v);
-    r.onsuccess = resolve; r.onerror = () => reject(r.error);
-  });
-}
-async function dbDelete(id) {
-  const d = await db();
-  return new Promise((resolve, reject) => {
-    const r = d.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
-    r.onsuccess = resolve; r.onerror = () => reject(r.error);
-  });
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function esc(v) {
-  return String(v ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-}
 function initials(name) {
   const p = String(name || "Voz").trim().split(/\s+/).filter(Boolean);
   return ((p[0]?.[0] || "V") + (p[1]?.[0] || p[0]?.[1] || "")).toUpperCase();
 }
-function selected() { return state.voices.find(v => v.id === state.selectedId) || null; }
-function setRemote(online, detail = "") {
+
+function sanitizeFilename(value) {
+  return String(value || "voz")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9-_]+/g, "-")
+    .replace(/-+/g, "-").replace(/^-|-$/g, "")
+    .slice(0, 60) || "voz";
+}
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getLocalVoices() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, "readonly").objectStore(STORE).getAll();
+    req.onsuccess = () => resolve((req.result || []).map(v => ({ ...v, source: "local" })));
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function putLocalVoice(voice) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, "readwrite").objectStore(STORE).put(voice);
+    req.onsuccess = resolve;
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function removeLocalVoice(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
+    req.onsuccess = resolve;
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function loadCuratedCatalog() {
+  try {
+    const response = await fetch(`${CATALOG_URL}?v=3`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return (Array.isArray(data.voices) ? data.voices : []).map(v => ({ ...v, source: "curated" }));
+  } catch (error) {
+    console.warn("Falha ao carregar catálogo curado:", error);
+    return [];
+  }
+}
+
+function selectedVoice() {
+  return state.voices.find(v => v.id === state.selectedId) || null;
+}
+
+function revokeImageUrls() {
+  state.imageUrls.forEach(url => URL.revokeObjectURL(url));
+  state.imageUrls = [];
+}
+
+function imageForVoice(voice) {
+  if (voice.imageUrl) return voice.imageUrl;
+  if (voice.image instanceof Blob) {
+    const url = URL.createObjectURL(voice.image);
+    state.imageUrls.push(url);
+    return url;
+  }
+  return null;
+}
+
+function voiceCard(voice) {
+  const selected = voice.id === state.selectedId;
+  const image = imageForVoice(voice);
+  const badge = voice.source === "curated" ? (voice.badge || "Catálogo") : "Minha voz";
+  const art = image
+    ? `<img src="${escapeHTML(image)}" alt="" loading="lazy" />`
+    : `<span class="voice-monogram">${escapeHTML(initials(voice.name))}</span>`;
+  const remove = voice.source === "local"
+    ? `<button class="custom-mini-btn danger" data-custom-delete="${escapeHTML(voice.id)}" aria-label="Excluir voz">×</button>`
+    : "";
+  return `<article class="voice-card custom-voice-card ${selected ? "custom-card-selected" : ""}" data-custom-card="${escapeHTML(voice.id)}" style="--v1:#4558ff;--v2:#8958d8">
+    <div class="voice-art">${art}<button class="voice-play" data-custom-preview="${escapeHTML(voice.id)}" aria-label="Ouvir referência">▶</button></div>
+    <div class="voice-meta">
+      <div style="min-width:0"><div class="voice-name">${escapeHTML(voice.name)}</div><div class="voice-sub">${escapeHTML(badge)} · ${escapeHTML((voice.language || "pt").toUpperCase())}${voice.category ? ` · ${escapeHTML(voice.category)}` : ""}</div></div>
+      <div class="custom-card-actions">${remove}</div>
+    </div>
+  </article>`;
+}
+
+function renderSelected() {
+  const voice = selectedVoice();
+  const box = $("#customSelectedVoice");
+  if (!box) return;
+  if (!voice) {
+    box.innerHTML = `<div class="custom-selected-icon">◎</div><div><strong>Nenhuma voz selecionada</strong><span>Escolha uma voz do catálogo abaixo.</span></div>`;
+    return;
+  }
+  box.innerHTML = `<div class="custom-selected-icon">${escapeHTML(initials(voice.name))}</div><div><strong>${escapeHTML(voice.name)}</strong><span>${voice.source === "curated" ? "Catálogo público" : "Minha biblioteca"} · Chatterbox Multilingual</span></div>`;
+  const language = $("#customBaseVoice");
+  if (language && voice.language) language.value = voice.language;
+}
+
+function renderVoices() {
+  revokeImageUrls();
+  const grid = $("#customVoiceGrid");
+  if (!grid) return;
+  const curated = state.voices.filter(v => v.source === "curated");
+  const local = state.voices.filter(v => v.source === "local");
+  let html = "";
+  if (curated.length) {
+    html += `<div class="custom-library-label" style="grid-column:1/-1"><strong>Catálogo público</strong><span>Perfis prontos: escolha, escreva e gere.</span></div>`;
+    html += curated.map(voiceCard).join("");
+  }
+  if (local.length) {
+    html += `<div class="custom-library-label" style="grid-column:1/-1;margin-top:8px"><strong>Minhas vozes</strong><span>Referências salvas apenas neste navegador.</span></div>`;
+    html += local.map(voiceCard).join("");
+  }
+  if (!html) html = `<div class="empty custom-empty-note" style="grid-column:1/-1">Nenhuma voz disponível.</div>`;
+  grid.innerHTML = html;
+  const count = $("#customVoiceCount");
+  if (count) count.textContent = `${state.voices.length} ${state.voices.length === 1 ? "voz disponível" : "vozes disponíveis"}`;
+  renderSelected();
+}
+
+async function refreshVoices() {
+  const [curated, local] = await Promise.all([loadCuratedCatalog(), getLocalVoices().catch(() => [])]);
+  state.curated = curated;
+  state.local = local;
+  state.voices = [...curated, ...local];
+  if (!state.voices.some(v => v.id === state.selectedId)) {
+    state.selectedId = state.voices[0]?.id || null;
+    if (state.selectedId) localStorage.setItem("kpnc:customVoiceId", state.selectedId);
+    else localStorage.removeItem("kpnc:customVoiceId");
+  }
+  renderVoices();
+}
+
+function setRemoteState(online, detail = "") {
   state.connected = online;
   const badge = $("#customEngineState");
   if (badge) {
     badge.className = `custom-engine-state ${online ? "online" : "offline"}`;
-    badge.textContent = online ? "● ZeroGPU conectado" : "● Serviço remoto indisponível";
+    badge.textContent = online ? "● Chatterbox remoto conectado" : "● Chatterbox remoto desconectado";
   }
-  if ($("#customEngineDetails") && detail) $("#customEngineDetails").textContent = detail;
-  if ($("#customGenerationStatus") && !state.busy) $("#customGenerationStatus").textContent = online ? "Pronto para gerar." : "Aguardando serviço remoto.";
+  const info = $("#customEngineDetails");
+  if (info) info.textContent = detail || (online ? `Space: ${state.space}` : "Conexão remota indisponível.");
+  const status = $("#customGenerationStatus");
+  if (status && !state.busy) status.textContent = online ? "Pronto para gerar." : "Conectando ao motor remoto…";
 }
-function friendly(err) {
-  const t = String(err?.message || err || "");
-  if (/quota|exceeded/i.test(t)) return "A cota gratuita do ZeroGPU acabou. Tente novamente mais tarde.";
-  if (/queue|capacity|busy/i.test(t)) return "O ZeroGPU está ocupado. Aguarde um pouco e tente novamente.";
-  if (/404|not found/i.test(t)) return "O Hugging Face Space configurado não foi encontrado.";
-  if (/failed to fetch|network|load failed/i.test(t)) return "Não foi possível acessar o Hugging Face agora.";
-  return t || "Falha no serviço remoto.";
+
+function findTtsEndpoint(api) {
+  const groups = [api?.named_endpoints, api?.unnamed_endpoints, api?.endpoints].filter(Boolean);
+  const candidates = [];
+  for (const group of groups) {
+    if (Array.isArray(group)) {
+      for (const item of group) candidates.push([item?.api_name || item?.name || item?.path, item]);
+    } else if (typeof group === "object") {
+      for (const [name, item] of Object.entries(group)) candidates.push([name, item]);
+    }
+  }
+  const score = ([name, item]) => {
+    const text = `${name || ""} ${item?.description || ""} ${item?.parameters?.map?.(p => `${p?.parameter_name || ""} ${p?.label || ""} ${p?.type?.type || p?.type || ""}`).join(" ") || ""}`.toLowerCase();
+    let s = 0;
+    if (text.includes("generate_tts_audio")) s += 20;
+    if (text.includes("text")) s += 3;
+    if (text.includes("language")) s += 3;
+    if (text.includes("audio")) s += 3;
+    if ((item?.parameters?.length || 0) >= 7) s += 5;
+    return s;
+  };
+  candidates.sort((a, b) => score(b) - score(a));
+  const best = candidates[0];
+  if (!best || score(best) < 8) return "/predict";
+  const name = String(best[0] || "/predict");
+  return name.startsWith("/") ? name : `/${name}`;
 }
-function findV1Endpoint(info) {
-  const named = info?.named_endpoints || {};
-  const entries = Object.entries(named);
-  const labels = params => params.map(p => `${p.label || ""} ${p.parameter_name || p.name || ""}`).join(" ").toLowerCase();
-  const exact = entries.find(([, e]) => (e.parameters || []).length === 8 && /pitch|f0|diffusion/.test(labels(e.parameters || [])));
-  if (exact) return exact[0];
-  const eight = entries.find(([, e]) => (e.parameters || []).length === 8);
-  if (eight) return eight[0];
-  if (named["/predict_1"]) return "/predict_1";
-  return entries.map(([k]) => k).find(k => /predict_1|v1/i.test(k)) || "/predict_1";
-}
-async function connect(showToast = true) {
+
+async function connectRemote(showToast = false) {
+  if (state.connected && state.client) return state.client;
+  if (state.connecting) return state.connecting;
   const field = $("#customEngineUrl");
   const space = String(field?.value || state.space || DEFAULT_SPACE).trim();
-  if (!space.includes("/")) { if (showToast) toast("Use usuario/nome-do-space.", true); return false; }
-  state.space = space; localStorage.setItem("kpnc:remoteSpace", space); if (field) field.value = space;
-  if (state.connected && state.client && state._space === space) return true;
-  if (state.connecting) return state.connecting;
+  if (!space) throw new Error("Informe um Hugging Face Space.");
+  state.space = space;
+  localStorage.setItem("kpnc:chatterboxSpace", space);
+  if (field) field.value = space;
+  setRemoteState(false, `Conectando a ${space}…`);
   state.connecting = (async () => {
-    try {
-      setRemote(false, `Conectando a ${space}…`);
-      const client = await Client.connect(space, { events: ["data", "status"] });
-      const info = await client.view_api();
-      state.client = client; state.endpoint = findV1Endpoint(info); state._space = space;
-      setRemote(true, `${space} · endpoint ${state.endpoint} · ZeroGPU público`);
-      if (showToast) toast("Serviço remoto conectado.");
-      return true;
-    } catch (e) {
-      state.client = null; state.endpoint = null; state._space = null;
-      setRemote(false, friendly(e)); if (showToast) toast(friendly(e), true); return false;
-    } finally { state.connecting = null; }
+    const client = await Client.connect(space);
+    const api = await client.view_api();
+    state.endpoint = findTtsEndpoint(api);
+    state.client = client;
+    setRemoteState(true, `Chatterbox Multilingual · ${space} · endpoint ${state.endpoint}`);
+    if (showToast) toast("Chatterbox remoto conectado.");
+    return client;
   })();
-  return state.connecting;
+  try { return await state.connecting; }
+  catch (error) {
+    state.client = null;
+    state.endpoint = null;
+    setRemoteState(false, `Falha ao acessar ${space}. O Space pode estar dormindo, em fila ou indisponível.`);
+    if (showToast) toast(error?.message || String(error), true);
+    throw error;
+  } finally { state.connecting = null; }
 }
 
-function clearImageUrls() { state.imageUrls.forEach(URL.revokeObjectURL); state.imageUrls = []; }
-function voiceCard(v) {
-  let art = `<span class="voice-monogram">${esc(initials(v.name))}</span>`;
-  if (v.image instanceof Blob) { const u = URL.createObjectURL(v.image); state.imageUrls.push(u); art = `<img src="${u}" alt="" loading="lazy">`; }
-  return `<article class="voice-card custom-voice-card ${v.id === state.selectedId ? "custom-card-selected" : ""}" data-custom-card="${esc(v.id)}" style="--v1:#4558ff;--v2:#8958d8">
-    <div class="voice-art">${art}<button class="voice-play" data-custom-preview="${esc(v.id)}">▶</button></div>
-    <div class="voice-meta"><div><div class="voice-name">${esc(v.name)}</div><div class="voice-sub">◎ Referência salva no navegador</div></div><button class="custom-mini-btn danger" data-custom-delete="${esc(v.id)}">×</button></div>
-  </article>`;
-}
-function render() {
-  clearImageUrls();
-  const grid = $("#customVoiceGrid");
-  if (grid) grid.innerHTML = state.voices.length ? state.voices.map(voiceCard).join("") : `<div class="empty custom-empty-note">Nenhuma voz personalizada. Adicione uma referência acima.</div>`;
-  if ($("#customVoiceCount")) $("#customVoiceCount").textContent = `${state.voices.length} ${state.voices.length === 1 ? "voz personalizada" : "vozes personalizadas"}`;
-  const box = $("#customSelectedVoice"), v = selected();
-  if (box) box.innerHTML = v ? `<div class="custom-selected-icon">${esc(initials(v.name))}</div><div><strong>${esc(v.name)}</strong><span>Referência local no navegador</span></div>` : `<div class="custom-selected-icon">◎</div><div><strong>Nenhuma voz selecionada</strong><span>Cadastre ou escolha uma voz abaixo.</span></div>`;
-}
-async function loadVoices() {
-  state.voices = await dbAll();
-  if (!state.voices.some(v => v.id === state.selectedId)) state.selectedId = state.voices[0]?.id || null;
-  state.selectedId ? localStorage.setItem("kpnc:customVoiceId", state.selectedId) : localStorage.removeItem("kpnc:customVoiceId");
-  render();
-}
-async function addVoice() {
-  const name = $("#customVoiceName")?.value.trim(), ref = $("#customReferenceFile")?.files?.[0], img = $("#customImageFile")?.files?.[0];
-  if (!name) return toast("Dê um nome para a voz.", true);
-  if (!ref) return toast("Escolha um áudio de referência.", true);
-  if (!$("#customRightsCheck")?.checked) return toast("Marque a confirmação sobre áudio sintético.", true);
-  if (ref.size > 30 * 1024 * 1024) return toast("A referência deve ter no máximo 30 MB.", true);
-  if (img && img.size > 5 * 1024 * 1024) return toast("A imagem deve ter no máximo 5 MB.", true);
-  const now = new Date().toISOString(), id = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-  await dbPut({ id, name, reference: new Blob([ref], { type: ref.type || "audio/wav" }), image: img ? new Blob([img], { type: img.type || "image/webp" }) : null, created_at: now });
-  state.selectedId = id; localStorage.setItem("kpnc:customVoiceId", id);
-  $("#customVoiceName").value = ""; $("#customReferenceFile").value = ""; $("#customImageFile").value = ""; $("#customRightsCheck").checked = false;
-  await loadVoices(); toast("Voz salva no navegador. Ela só será enviada durante a geração.");
-}
-async function removeVoice(id) {
-  const v = state.voices.find(x => x.id === id); if (!v || !confirm(`Excluir “${v.name}” deste navegador?`)) return;
-  await dbDelete(id); if (state.selectedId === id) state.selectedId = null; await loadVoices(); toast("Voz removida.");
-}
-function preview(id) {
-  const b = state.voices.find(v => v.id === id)?.reference; if (!b) return;
-  const u = URL.createObjectURL(b), a = new Audio(u); a.onended = a.onerror = () => URL.revokeObjectURL(u); a.play().catch(() => toast("O navegador bloqueou a reprodução.", true));
-}
-
-async function baseEngine() {
-  if (state.base) return state.base; if (state.baseLoading) return state.baseLoading;
-  state.baseLoading = (async () => {
-    if ($("#customGenerationStatus")) $("#customGenerationStatus").textContent = "Carregando TTS base PT-BR…";
-    const mod = await import("https://cdn.jsdelivr.net/npm/@pedrobef/vozz@0.2.7/+esm"), Vozz = mod.Vozz || mod.default;
-    state.base = await Vozz.carregar({ dispositivo: "wasm", precisao: "q8" }); return state.base;
-  })();
-  try { return await state.baseLoading; } finally { state.baseLoading = null; }
-}
-async function makeBase(text, voice) {
-  const e = await baseEngine(), audio = await e.falar(text, { voz: voice, velocidade: 1 });
-  return audio.paraBlob ? audio.paraBlob() : new Blob([audio.paraWav()], { type: "audio/wav" });
-}
-function busy(on, label) {
-  state.busy = on; if ($("#customGenerateBtn")) $("#customGenerateBtn").disabled = on; if ($("#customAddVoiceBtn")) $("#customAddVoiceBtn").disabled = on; if (label && $("#customGenerationStatus")) $("#customGenerationStatus").textContent = label;
-}
-function urlsFrom(value, out = []) {
-  if (!value) return out;
-  if (typeof value === "string" && /^https?:\/\//.test(value)) out.push(value);
-  else if (Array.isArray(value)) value.forEach(x => urlsFrom(x, out));
-  else if (typeof value === "object") { if (typeof value.url === "string") out.push(value.url); Object.values(value).forEach(x => urlsFrom(x, out)); }
-  return [...new Set(out)];
-}
-async function remoteConvert(source, reference, steps) {
-  if (!state.connected && !(await connect(false))) throw new Error("Serviço remoto indisponível.");
-  const job = state.client.submit(state.endpoint || "/predict_1", [handle_file(source), handle_file(reference), steps, 1.0, 0.7, false, true, 0]);
-  let urls = [];
-  for await (const m of job) {
-    if (m.type === "status") {
-      const stage = m.stage || m.status?.stage, pos = m.position ?? m.status?.position, eta = m.eta ?? m.status?.eta;
-      if (stage === "pending") busy(true, `Na fila ZeroGPU${Number.isFinite(pos) ? ` · posição ${pos + 1}` : ""}${Number.isFinite(eta) ? ` · ~${Math.ceil(eta)}s` : ""}…`);
-      if (stage === "generating") busy(true, "ZeroGPU convertendo a voz…");
-      if (stage === "error") throw new Error(m.message || "Erro no ZeroGPU.");
-    }
-    if (m.type === "data") { const found = urlsFrom(m.data); if (found.length) urls = found; }
-  }
-  const url = [...urls].reverse().find(u => /\.wav(?:\?|$)/i.test(u)) || urls.at(-1); if (!url) throw new Error("O Space não retornou o WAV final.");
-  const r = await fetch(url); if (!r.ok) throw new Error(`Falha ao baixar resultado (${r.status}).`); return r.blob();
-}
-async function generate() {
+async function addLocalVoice() {
   if (state.busy) return;
-  const v = selected(), text = $("#customSpeechText")?.value.trim(), baseVoice = $("#customBaseVoice")?.value || "pm_alex", steps = Number($("#customQuality")?.value || 10);
-  if (!v) return toast("Selecione uma voz personalizada.", true); if (!text) return toast("Digite o texto.", true);
+  const name = $("#customVoiceName")?.value.trim();
+  const reference = $("#customReferenceFile")?.files?.[0];
+  const image = $("#customImageFile")?.files?.[0];
+  const acknowledged = $("#customRightsCheck")?.checked;
+  if (!name) return toast("Dê um nome para a voz.", true);
+  if (!reference) return toast("Escolha um áudio de referência.", true);
+  if (!acknowledged) return toast("Confirme que a saída será tratada como áudio sintético.", true);
+  if (reference.size > 30 * 1024 * 1024) return toast("A referência deve ter no máximo 30 MB.", true);
+  if (image && image.size > 5 * 1024 * 1024) return toast("A imagem deve ter no máximo 5 MB.", true);
+  const id = `local-${crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+  const item = {
+    id,
+    name,
+    source: "local",
+    language: "pt",
+    category: "Minha voz",
+    reference,
+    image: image || null,
+    createdAt: Date.now(),
+  };
   try {
-    busy(true, "1/2 · Gerando fala-base no navegador…"); const source = await makeBase(text, baseVoice);
-    busy(true, `2/2 · Enviando para ${state.space}…`); const blob = await remoteConvert(source, v.reference, steps);
-    if (state.currentUrl) URL.revokeObjectURL(state.currentUrl); state.currentBlob = blob; state.currentUrl = URL.createObjectURL(blob);
-    $("#customResultAudio").src = state.currentUrl; $("#customResultCard").classList.add("visible"); busy(false, "Voz personalizada gerada com sucesso."); toast("Conversão concluída.");
-  } catch (e) { busy(false, "Falha na geração."); toast(friendly(e), true); }
-}
-function download() {
-  if (!state.currentBlob) return; const u = URL.createObjectURL(state.currentBlob), a = document.createElement("a"), name = selected()?.name || "voz";
-  a.href = u; a.download = `${name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9-_]+/g, "-")}-${Date.now()}.wav`; a.click(); setTimeout(() => URL.revokeObjectURL(u), 1000);
+    await putLocalVoice(item);
+    state.selectedId = id;
+    localStorage.setItem("kpnc:customVoiceId", id);
+    $("#customVoiceName").value = "";
+    $("#customReferenceFile").value = "";
+    $("#customImageFile").value = "";
+    $("#customRightsCheck").checked = false;
+    await refreshVoices();
+    toast("Voz salva neste navegador.");
+  } catch (error) { toast(error?.message || String(error), true); }
 }
 
-function patchCopy() {
-  const p = $("#view-custom .section-head p"); if (p) p.textContent = "Cadastre uma referência e use Seed-VC remoto. O visitante não precisa instalar absolutamente nada.";
-  const call = $("#view-custom .custom-callout span"); if (call) call.textContent = "Texto → fala-base no navegador → Seed-VC ZeroGPU → WAV final. A referência só é enviada durante a geração.";
-  const h = $("#view-custom .custom-panel h2"); if (h) h.textContent = "Serviço remoto ZeroGPU";
-  const sub = $("#view-custom .custom-panel .panel-sub"); if (sub) sub.textContent = "Backend público do Hugging Face. Pode haver fila e limite gratuito diário.";
-  const lab = $('label[for="customEngineUrl"]'); if (lab) lab.textContent = "Hugging Face Space";
-  const field = $("#customEngineUrl"); if (field) { field.value = state.space; field.placeholder = "usuario/nome-do-space"; }
-  if ($("#customEngineDetails")) $("#customEngineDetails").textContent = "Padrão: Plachta/Seed-VC. O endpoint correto é detectado automaticamente.";
-  const refHint = $('label[for="customReferenceFile"] + input + .custom-hint'); if (refHint) refHint.textContent = "Use 5–25 segundos, uma pessoa falando, sem música. A referência fica salva neste navegador.";
-  const card = $$("#view-settings .settings-card").find(x => /Engine de clonagem/i.test(x.querySelector("h3")?.textContent || ""));
-  if (card) {
-    card.querySelector("p").textContent = "Seed-VC roda em Hugging Face ZeroGPU. Visitantes usam direto pelo site, sem Python, .bat ou aplicativo local.";
-    const rows = [...card.querySelectorAll(".info-row")];
-    if (rows[0]) rows[0].innerHTML = '<span>Motor</span><strong>Seed-VC · ZeroGPU</strong>'; if (rows[1]) rows[1].innerHTML = '<span>Instalação</span><strong>Nenhuma</strong>'; if (rows[2]) rows[2].innerHTML = '<span>Referência</span><strong>5–25 s</strong>'; if (rows[3]) rows[3].innerHTML = '<span>Uso</span><strong>Grátis, com cota/fila</strong>';
+async function deleteVoice(id) {
+  const voice = state.voices.find(v => v.id === id);
+  if (!voice || voice.source !== "local") return;
+  if (!confirm(`Excluir “${voice.name}” deste navegador?`)) return;
+  await removeLocalVoice(id);
+  if (state.selectedId === id) state.selectedId = null;
+  await refreshVoices();
+  toast("Voz removida.");
+}
+
+async function referenceForVoice(voice) {
+  if (voice.referenceUrl) return voice.referenceUrl;
+  if (voice.reference instanceof Blob) return voice.reference;
+  throw new Error("Esta voz não possui uma referência de áudio válida.");
+}
+
+async function previewReference(id) {
+  const voice = state.voices.find(v => v.id === id);
+  if (!voice) return;
+  try {
+    const ref = await referenceForVoice(voice);
+    const url = typeof ref === "string" ? ref : URL.createObjectURL(ref);
+    const audio = new Audio(url);
+    if (typeof ref !== "string") {
+      audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
+      audio.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
+    }
+    await audio.play();
+  } catch (error) { toast(error?.message || String(error), true); }
+}
+
+function audioUrlFromResult(result) {
+  const data = result?.data;
+  const first = Array.isArray(data) ? data[0] : data;
+  if (!first) return null;
+  if (typeof first === "string") return first;
+  if (first.url) return first.url;
+  if (first.path && /^https?:\/\//i.test(first.path)) return first.path;
+  if (Array.isArray(first) && typeof first[1] === "string") return first[1];
+  return null;
+}
+
+function setBusy(busy, text) {
+  state.busy = busy;
+  const generate = $("#customGenerateBtn");
+  const add = $("#customAddVoiceBtn");
+  if (generate) generate.disabled = busy;
+  if (add) add.disabled = busy;
+  if (text && $("#customGenerationStatus")) $("#customGenerationStatus").textContent = text;
+}
+
+async function generateVoice() {
+  if (state.busy) return;
+  const voice = selectedVoice();
+  const text = $("#customSpeechText")?.value.trim();
+  const language = $("#customBaseVoice")?.value || voice?.language || "pt";
+  const exaggeration = Number($("#customQuality")?.value || 0.5);
+  if (!voice) return toast("Escolha uma voz.", true);
+  if (!text) return toast("Digite o texto que a voz deve falar.", true);
+  if (text.length > 300) return toast("O Chatterbox remoto aceita até 300 caracteres por geração nesta build.", true);
+  setBusy(true, `Preparando ${voice.name}…`);
+  try {
+    const client = await connectRemote(false);
+    const reference = await referenceForVoice(voice);
+    const prompt = handle_file(reference);
+    setBusy(true, `Gerando ${voice.name} no Chatterbox…`);
+    const result = await client.predict(state.endpoint || "/predict", [
+      text,
+      language,
+      prompt,
+      exaggeration,
+      0.8,
+      0,
+      0.5,
+    ]);
+    const remoteUrl = audioUrlFromResult(result);
+    if (!remoteUrl) throw new Error("O Chatterbox respondeu, mas não retornou um áudio reconhecível.");
+    const response = await fetch(remoteUrl);
+    if (!response.ok) throw new Error(`Falha ao baixar o áudio gerado (${response.status}).`);
+    const blob = await response.blob();
+    if (state.currentUrl) URL.revokeObjectURL(state.currentUrl);
+    state.currentBlob = blob;
+    state.currentUrl = URL.createObjectURL(blob);
+    $("#customResultAudio").src = state.currentUrl;
+    $("#customResultCard").classList.add("visible");
+    $("#customGenerationStatus").textContent = "Áudio gerado com sucesso.";
+    toast("Voz gerada pelo Chatterbox.");
+  } catch (error) {
+    const message = error?.message || String(error);
+    $("#customGenerationStatus").textContent = "Falha na geração.";
+    toast(/quota|gpu|queue|space/i.test(message) ? `O serviço remoto está em fila/cota: ${message}` : message, true);
+  } finally { setBusy(false); }
+}
+
+function downloadCurrent() {
+  if (!state.currentBlob) return;
+  const voice = selectedVoice();
+  const url = URL.createObjectURL(state.currentBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFilename(voice?.name || "voz")}-${Date.now()}.wav`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function patchUI() {
+  const nav = $("[data-view-target='custom']");
+  if (nav) nav.innerHTML = `<span class="nav-icon">◎</span> Vozes especiais`;
+  const head = $("#view-custom .section-head h2");
+  if (head) head.textContent = "Vozes especiais";
+  const headP = $("#view-custom .section-head p");
+  if (headP) headP.textContent = "Perfis prontos com timbre de referência: escolha a voz, escreva o texto e gere diretamente com Chatterbox Multilingual.";
+  const callout = $("#view-custom .custom-callout");
+  if (callout) callout.innerHTML = `<strong>Modo Fish-like</strong><span>Texto → perfil de voz já cadastrado → Chatterbox Multilingual → WAV. Sem Seed-VC e sem fala-base intermediária.</span>`;
+
+  const engineTitle = $("#view-custom .custom-panel:first-of-type h2");
+  if (engineTitle) engineTitle.textContent = "Motor remoto";
+  const engineSub = $("#view-custom .custom-panel:first-of-type .panel-sub");
+  if (engineSub) engineSub.textContent = "O site usa um Hugging Face Space do Chatterbox Multilingual. O visitante não instala nada.";
+  const engineLabel = $("label[for='customEngineUrl']");
+  if (engineLabel) engineLabel.textContent = "Hugging Face Space";
+  const engineInput = $("#customEngineUrl");
+  if (engineInput) { engineInput.value = state.space; engineInput.placeholder = DEFAULT_SPACE; }
+  const details = $("#customEngineDetails");
+  if (details) details.textContent = "Conectando ao Chatterbox Multilingual…";
+
+  const addTitle = [...$$("#view-custom .custom-panel:first-of-type h3")].find(Boolean);
+  if (addTitle) addTitle.textContent = "Criar minha voz";
+  const refHint = $("#customReferenceFile")?.nextElementSibling;
+  if (refHint) refHint.textContent = "Use de 5 a 30 segundos de voz limpa. Essa referência fica salva só neste navegador.";
+  const addButton = $("#customAddVoiceBtn");
+  if (addButton) addButton.textContent = "+ Salvar minha voz";
+
+  const generateTitle = $("#view-custom .custom-panel:nth-of-type(2) h2");
+  if (generateTitle) generateTitle.textContent = "Gerar diretamente na voz";
+  const generateSub = $("#view-custom .custom-panel:nth-of-type(2) .panel-sub");
+  if (generateSub) generateSub.textContent = "Nenhuma fala-base intermediária: o Chatterbox recebe texto + referência e sintetiza diretamente o timbre selecionado.";
+  const text = $("#customSpeechText");
+  if (text) { text.maxLength = 300; text.placeholder = "Digite o que a voz selecionada deve falar…"; }
+  const counterLabel = $("#customSpeechText")?.previousElementSibling?.querySelector("small");
+  if (counterLabel) counterLabel.innerHTML = `<span id="customCharCount">0</span>/300`;
+
+  const baseLabel = $("label[for='customBaseVoice']");
+  if (baseLabel) baseLabel.textContent = "Idioma";
+  const base = $("#customBaseVoice");
+  if (base) base.innerHTML = `
+    <option value="pt">Português</option><option value="en">Inglês</option><option value="es">Espanhol</option><option value="fr">Francês</option><option value="it">Italiano</option><option value="de">Alemão</option><option value="ja">Japonês</option><option value="ko">Coreano</option><option value="zh">Mandarim</option>`;
+  const qualityLabel = $("label[for='customQuality']");
+  if (qualityLabel) qualityLabel.textContent = "Expressividade";
+  const quality = $("#customQuality");
+  if (quality) quality.innerHTML = `<option value="0.35">Contida</option><option value="0.5" selected>Natural</option><option value="0.75">Expressiva</option><option value="1.0">Intensa</option>`;
+  const genBtn = $("#customGenerateBtn");
+  if (genBtn) genBtn.textContent = "✦ Gerar nesta voz";
+
+  const libraryTitle = $("#view-custom .custom-library-head h2");
+  if (libraryTitle) libraryTitle.textContent = "Catálogo de vozes";
+
+  const settingsCards = $$("#view-settings .settings-card");
+  const cloningCard = settingsCards.find(card => /Engine de clonagem/i.test(card.querySelector("h3")?.textContent || ""));
+  if (cloningCard) {
+    cloningCard.querySelector("h3").textContent = "Motor de vozes especiais";
+    const p = cloningCard.querySelector("p");
+    if (p) p.textContent = "Chatterbox Multilingual faz TTS zero-shot diretamente a partir do perfil de voz cadastrado.";
+    const rows = cloningCard.querySelectorAll(".info-row");
+    if (rows[0]) rows[0].innerHTML = `<span>Motor</span><strong>Chatterbox Multilingual</strong>`;
+    if (rows[1]) rows[1].innerHTML = `<span>Fluxo</span><strong>Texto → voz direta</strong>`;
+    if (rows[2]) rows[2].innerHTML = `<span>Referência</span><strong>5–30 s</strong>`;
+    if (rows[3]) rows[3].innerHTML = `<span>Instalação</span><strong>Nenhuma</strong>`;
   }
-  const dataCard = $$("#view-settings .settings-card").find(x => /Dados locais/i.test(x.querySelector("h3")?.textContent || "")); if (dataCard?.querySelector("p")) dataCard.querySelector("p").textContent = "Favoritos, histórico e referências personalizadas ficam no navegador. A referência é enviada ao Space apenas ao gerar.";
-  const note = document.querySelector(".sidebar-note"); if (note) note.innerHTML = '<strong>Sem instalação</strong> Vozes prontas rodam no navegador. Personalizadas usam ZeroGPU remoto e podem entrar em fila.';
 }
 
-function events() {
-  $("#customConnectBtn")?.addEventListener("click", () => connect(true));
-  $("#customRefreshBtn")?.addEventListener("click", () => loadVoices());
-  $("#customAddVoiceBtn")?.addEventListener("click", () => addVoice().catch(e => toast(e.message, true)));
-  $("#customGenerateBtn")?.addEventListener("click", generate); $("#customDownloadBtn")?.addEventListener("click", download);
-  $("#customSpeechText")?.addEventListener("input", e => { if ($("#customCharCount")) $("#customCharCount").textContent = e.target.value.length; });
-  $("#customEngineUrl")?.addEventListener("change", () => { state.connected = false; state.client = null; state.endpoint = null; connect(true); });
-  $("#customVoiceGrid")?.addEventListener("click", e => {
-    const p = e.target.closest("[data-custom-preview]"); if (p) { e.stopPropagation(); return preview(p.dataset.customPreview); }
-    const d = e.target.closest("[data-custom-delete]"); if (d) { e.stopPropagation(); return removeVoice(d.dataset.customDelete); }
-    const c = e.target.closest("[data-custom-card]"); if (c) { state.selectedId = c.dataset.customCard; localStorage.setItem("kpnc:customVoiceId", state.selectedId); render(); }
+function setupEvents() {
+  $("#customConnectBtn")?.addEventListener("click", () => connectRemote(true).catch(() => {}));
+  $("#customAddVoiceBtn")?.addEventListener("click", addLocalVoice);
+  $("#customGenerateBtn")?.addEventListener("click", generateVoice);
+  $("#customDownloadBtn")?.addEventListener("click", downloadCurrent);
+  $("#customRefreshBtn")?.addEventListener("click", refreshVoices);
+  $("#customSpeechText")?.addEventListener("input", event => {
+    const counter = $("#customCharCount");
+    if (counter) counter.textContent = event.target.value.length;
+  });
+  $("#customVoiceGrid")?.addEventListener("click", event => {
+    const preview = event.target.closest("[data-custom-preview]");
+    if (preview) { event.stopPropagation(); previewReference(preview.dataset.customPreview); return; }
+    const del = event.target.closest("[data-custom-delete]");
+    if (del) { event.stopPropagation(); deleteVoice(del.dataset.customDelete); return; }
+    const card = event.target.closest("[data-custom-card]");
+    if (card) {
+      state.selectedId = card.dataset.customCard;
+      localStorage.setItem("kpnc:customVoiceId", state.selectedId);
+      renderVoices();
+    }
   });
 }
 
-patchCopy(); events(); loadVoices().catch(() => render()); connect(false);
-window.addEventListener("beforeunload", () => { clearImageUrls(); if (state.currentUrl) URL.revokeObjectURL(state.currentUrl); });
+async function init() {
+  patchUI();
+  setupEvents();
+  await refreshVoices();
+  connectRemote(false).catch(() => {});
+}
+
+init();
