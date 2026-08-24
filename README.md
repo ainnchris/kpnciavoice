@@ -1,114 +1,207 @@
 # KPNC Voice Studio
 
-Aplicação web de TTS com catálogo de vozes e perfis de voz especiais. O site continua hospedado no GitHub Pages e o visitante não precisa instalar Python, modelos ou aplicativo local.
+Aplicação web de TTS com dois modos:
 
-## Arquitetura atual
+- **Local:** 31 vozes Kokoro/Vozz executadas no navegador.
+- **Fish Voices:** biblioteca pública da Fish Audio, TTS por `reference_id` e criação persistente de clones através de um Cloudflare Worker que mantém a chave da API fora do navegador.
 
-### Vozes prontas
-
-- 31 vozes compatíveis.
-- 3 vozes em Português Brasileiro: `pf_dora`, `pm_alex`, `pm_santa`.
-- 28 vozes em inglês.
-- TTS executado no navegador com Kokoro/Vozz.
-- Favoritos, apelidos e histórico locais.
-
-### Vozes especiais
-
-O fluxo principal agora é direto, no estilo de bibliotecas como Fish Audio:
+## Arquitetura
 
 ```text
-Texto → perfil de voz já cadastrado → Chatterbox Multilingual → WAV
+GitHub Pages
+   |
+   | HTTPS
+   v
+Cloudflare Worker
+   |
+   | Authorization: Bearer FISH_API_KEY
+   v
+Fish Audio API
+   |- GET /model
+   |- POST /model
+   `- POST /v1/tts
 ```
 
-Não existe mais fala-base Kokoro seguida de Seed-VC no caminho principal.
+A chave `FISH_API_KEY` **nunca** deve ser colocada em `app.js`, `custom-voices.js` ou qualquer arquivo servido pelo GitHub Pages.
 
-- O catálogo público fica em `curated-voices.json`.
-- Cada perfil público pode apontar para uma referência de áudio autorizada/licenciada por URL.
-- O usuário escolhe uma voz, digita o texto e gera.
-- Chatterbox Multilingual recebe texto + idioma + referência e faz TTS zero-shot diretamente naquele timbre.
-- O Space remoto padrão é `ResembleAI/Chatterbox-Multilingual-TTS`.
-- O site detecta o endpoint Gradio automaticamente com `view_api()`.
-- O visitante não instala nada.
+## Fish Voices
 
-A build inclui alguns perfis de demonstração oficiais do próprio Chatterbox para testar a experiência imediatamente. Eles não representam pessoas famosas.
+### Biblioteca pública
 
-### Minhas vozes
+O frontend consulta o Worker em `/api/voices`. O Worker consulta `GET https://api.fish.audio/model` e permite:
 
-O usuário ainda pode cadastrar uma referência própria:
+- pesquisa por título;
+- idioma;
+- ordenação por relevância, uso ou data;
+- filtro **Somente licenciadas pela Fish**;
+- seleção de modelos públicos da comunidade.
 
-- 5–30 segundos de voz limpa são recomendados.
-- A referência fica em IndexedDB no navegador.
-- Ela só é enviada ao Space quando o usuário pede uma geração.
-- Pode ser removida a qualquer momento pelo próprio navegador.
+### Geração
 
-## Catálogo público
-
-`curated-voices.json` usa este formato:
+O frontend envia somente:
 
 ```json
 {
-  "voices": [
-    {
-      "id": "voice-id",
-      "name": "Nome exibido",
-      "badge": "Licenciada",
-      "category": "Cinema",
-      "language": "pt",
-      "referenceUrl": "https://.../reference.wav",
-      "imageUrl": "https://.../cover.webp"
-    }
-  ]
+  "text": "Texto a ser falado",
+  "reference_id": "id-da-voz",
+  "format": "mp3",
+  "speed": 1
 }
 ```
 
-Para perfis de pessoas reais, use apenas referências cujo uso e publicação estejam autorizados/licenciados e deixe claro que a saída é sintética.
+O Worker adiciona a credencial e encaminha para `POST /v1/tts`.
 
-## Motor remoto
+### Clonagem persistente
 
-Chatterbox Multilingual suporta TTS condicionado por áudio de referência e múltiplos idiomas. O site usa `@gradio/client` diretamente no navegador.
+O formulário **Criar voz persistente** envia uma referência de áudio ao Worker. O Worker encaminha para `POST /model` usando:
 
-O backend remoto pode ter fila, dormir ou atingir cota de GPU. Para produção com tráfego alto, troque o Space configurado por infraestrutura própria ou dedicada.
+- `type=tts`;
+- `train_mode=fast`;
+- arquivo de referência em `voices`;
+- visibilidade `unlist`, `private` ou `public`;
+- transcrição opcional em `texts`;
+- capa obrigatória para modelo público.
 
-## Privacidade
+A resposta contém o ID da voz. Esse ID pode ser reutilizado em TTS sem reenviar o áudio de referência em cada geração.
 
-- TTS comum: processado no navegador.
-- Favoritos e configurações: `localStorage`.
-- Histórico: IndexedDB.
-- Minhas vozes: IndexedDB.
-- Perfis do catálogo: metadados públicos no repositório e referências por URL.
-- A referência usada na geração é enviada ao Space do Chatterbox durante a inferência.
+## Responsabilidade por vozes de pessoas reais
 
-## Publicação
+A infraestrutura aceita perfis de voz de pessoas reais, inclusive figuras públicas, mas quem cria ou utiliza uma voz é responsável por possuir os direitos, permissões e consentimentos aplicáveis e por fazer as divulgações exigidas para conteúdo sintético. O site não deve apresentar áudio de IA como uma gravação autêntica da pessoa.
 
-GitHub Pages:
+## Configurar Fish Audio + Cloudflare
 
-1. `Settings > Pages`
-2. `Deploy from a branch`
-3. branch `main`
-4. pasta `/(root)`
+### 1. Fish Audio
 
-## Estrutura principal
+Crie uma chave em sua conta Fish Audio e guarde o valor como segredo. Não faça commit da chave.
+
+O Worker usa por padrão:
+
+```text
+FISH_MODEL=s2.1-pro-free
+```
+
+Essa variável fica em `worker/wrangler.toml` e pode ser alterada posteriormente sem mexer no frontend.
+
+> Em agosto de 2026, a Fish informa que o acesso gratuito ao `s2.1-pro-free` está estendido até **31 de agosto de 2026**, sujeito à política de uso justo. Depois disso, confirme a disponibilidade/preço atual e troque `FISH_MODEL` se necessário.
+
+### 2. Secrets no GitHub
+
+No repositório:
+
+```text
+Settings
+> Secrets and variables
+> Actions
+> New repository secret
+```
+
+Crie:
+
+```text
+FISH_API_KEY
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+```
+
+O token Cloudflare precisa de permissão para editar/deployar Workers.
+
+### 3. Deploy do Worker
+
+Abra:
+
+```text
+Actions
+> Deploy Fish API Worker
+> Run workflow
+```
+
+O workflow:
+
+1. instala o Wrangler;
+2. publica `worker/`;
+3. salva `FISH_API_KEY` como Worker Secret;
+4. imprime a URL `workers.dev` nos logs.
+
+### 4. Conectar o GitHub Pages
+
+Abra `fish-config.js` e substitua:
+
+```js
+window.KPNC_FISH_API_BASE = "";
+```
+
+por:
+
+```js
+window.KPNC_FISH_API_BASE = "https://kpnc-voice-api.SEUSUBDOMINIO.workers.dev";
+```
+
+Depois do deploy do GitHub Pages, todos os visitantes usarão o mesmo backend sem ver a chave da Fish.
+
+Antes de alterar `fish-config.js`, o proprietário também pode colar a URL do Worker no aviso mostrado na aba **Fish Voices** para testar somente naquele navegador.
+
+## Endpoints do Worker
+
+```text
+GET  /health
+GET  /api/voices
+GET  /api/voices/:id
+POST /api/tts
+POST /api/voices/clone
+```
+
+O Worker aceita requisições do GitHub Pages `https://ainnchris.github.io` e das origens locais configuradas em `worker/wrangler.toml`.
+
+## Limites desta build
+
+- TTS Fish: até 5.000 caracteres por solicitação no frontend/proxy.
+- Referência para clone: até 20 MB.
+- Capa: até 5 MB.
+- A disponibilidade, limites, moderação e preços finais da geração são definidos pela Fish Audio.
+- O Worker impede que a chave Fish seja exposta, mas uma API pública ainda pode sofrer abuso; para tráfego maior, adicione Cloudflare Turnstile/rate limiting.
+
+## Arquivos principais
 
 ```text
 kpnciavoice/
 ├── index.html
 ├── styles.css
-├── app.js
-├── tts-worker.js
-├── custom-voices.js
 ├── custom-voices.css
-├── curated-voices.json
-├── .github/workflows/validate.yml
-└── engine/                 # legado/fallback local; não é necessário para visitantes
+├── app.js
+├── custom-voices.js
+├── fish-config.js
+├── tts-worker.js
+├── worker/
+│   ├── package.json
+│   ├── wrangler.toml
+│   └── src/index.js
+└── .github/workflows/
+    ├── validate.yml
+    └── deploy-fish-worker.yml
 ```
 
-## Dependências web
+## Desenvolvimento local
 
-- `kokoro-js`
-- `@pedrobef/vozz`
-- `@gradio/client@2.5.0`
-- Chatterbox Multilingual em um Hugging Face Space Gradio
+Para o site:
 
-## Segurança e transparência
+```bash
+python -m http.server 8000
+```
 
-O produto deve identificar as saídas como áudio sintético. Não use perfis de voz para fraude, autenticação, personificação enganosa ou para apresentar uma geração como gravação autêntica de outra pessoa.
+Para o Worker:
+
+```bash
+cd worker
+npm install
+npx wrangler dev
+```
+
+No desenvolvimento local, configure `FISH_API_KEY` como segredo/variável do Wrangler em vez de escrevê-la no código.
+
+## Créditos
+
+- Fish Audio / S2.1 Pro
+- Kokoro-82M
+- Vozz/Kokoro PT-BR
+- Cloudflare Workers
+- KPNC Voice Studio
