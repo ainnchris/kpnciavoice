@@ -28,6 +28,9 @@ jobs:
           node --check custom-voices.js
           node --check tts-worker.js
 
+      - name: Check curated voice catalog
+        run: python -m json.tool curated-voices.json > /dev/null
+
       - name: Check local engine Python syntax
         run: python -m py_compile engine/server.py
 
@@ -36,5 +39,6 @@ jobs:
           test -f index.html
           test -f styles.css
           test -f custom-voices.css
+          test -f curated-voices.json
           test -f engine/setup_windows.bat
           test -f engine/start_windows.bat
