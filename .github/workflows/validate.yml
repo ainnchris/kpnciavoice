@@ -26,19 +26,21 @@ jobs:
         run: |
           node --check app.js
           node --check custom-voices.js
+          node --check fish-config.js
           node --check tts-worker.js
+          node --check worker/src/index.js
 
-      - name: Check curated voice catalog
-        run: python -m json.tool curated-voices.json > /dev/null
-
-      - name: Check local engine Python syntax
-        run: python -m py_compile engine/server.py
+      - name: Check JSON manifests
+        run: python -m json.tool worker/package.json > /dev/null
 
       - name: Verify required project files
         run: |
           test -f index.html
           test -f styles.css
           test -f custom-voices.css
-          test -f curated-voices.json
-          test -f engine/setup_windows.bat
-          test -f engine/start_windows.bat
+          test -f custom-voices.js
+          test -f fish-config.js
+          test -f worker/src/index.js
+          test -f worker/wrangler.toml
+          test -f worker/package.json
+          test -f .github/workflows/deploy-fish-worker.yml
