@@ -1,134 +1,86 @@
 # KPNC Voice Studio
 
-KPNC Voice Studio combina TTS local no navegador com um engine opcional de conversão de voz no próprio computador.
+Aplicação web de TTS e conversão de voz. O site fica no GitHub Pages e o visitante **não precisa instalar Python, modelos ou aplicativo local**.
 
-Site publicado:
-
-```text
-https://ainnchris.github.io/kpnciavoice/
-```
-
-## Recursos atuais
+## Arquitetura atual
 
 ### Vozes prontas
 
-- 31 vozes realmente compatíveis nesta build.
-- 3 vozes nativas de Português Brasileiro: `pf_dora`, `pm_alex`, `pm_santa`.
-- 28 vozes em inglês pelo `kokoro-js`.
-- Pesquisa e filtros.
-- Favoritos e apelidos locais.
-- Geração TTS no navegador.
-- Controle de velocidade.
-- Prévia e download WAV.
-- Histórico local em IndexedDB.
-
-O português usa `@pedrobef/vozz` + Kokoro; as vozes inglesas usam `kokoro-js`.
+- 31 vozes compatíveis.
+- 3 vozes em Português Brasileiro: `pf_dora`, `pm_alex`, `pm_santa`.
+- 28 vozes em inglês.
+- TTS executado no próprio navegador com Kokoro/Vozz.
+- Favoritos, apelidos e histórico locais.
 
 ### Vozes personalizadas
 
-A área **Personalizadas** integra o site ao **KPNC Voice Engine**, que roda em `localhost` e usa Seed-VC.
+- A pessoa adiciona um áudio de referência e, opcionalmente, uma imagem.
+- A referência fica salva no **IndexedDB do navegador**.
+- O site cria uma fala-base em PT-BR no navegador.
+- Durante a geração, a fala-base e a referência são enviadas para um Hugging Face Space com Seed-VC.
+- O WAV convertido volta ao navegador.
+- Nada precisa ser instalado no computador do visitante.
 
-Fluxo:
-
-```text
-Texto
-  ↓
-Vozz/Kokoro gera fala-base PT-BR no navegador
-  ↓
-KPNC Voice Engine em http://127.0.0.1:7865
-  ↓
-Seed-VC converte usando um áudio de referência
-  ↓
-WAV final
-```
-
-Não é necessário treinar um modelo para cada nova referência. Para uma voz personalizada, basta cadastrar um trecho curto e limpo.
-
-## Instalar o engine de vozes personalizadas no Windows
-
-A instalação é feita uma vez.
-
-1. Tenha **Python 3.10 64-bit** instalado.
-2. Entre na pasta `engine`.
-3. Abra `setup_windows.bat`.
-4. Aguarde a instalação do ambiente Python, PyTorch e Seed-VC.
-5. Depois, sempre que quiser usar vozes personalizadas, abra `start_windows.bat`.
-6. Deixe a janela aberta enquanto estiver usando a área **Personalizadas** do site.
-
-O servidor local será iniciado em:
+O Space padrão nesta build é:
 
 ```text
-http://127.0.0.1:7865
+Plachta/Seed-VC
 ```
 
-Detalhes adicionais estão em `engine/README.md`.
+Ele pode ser trocado na própria aba **Personalizadas** para outro Space Gradio compatível.
 
-### GPU
+## Importante sobre o modo gratuito
 
-Uma GPU NVIDIA compatível melhora muito o tempo de conversão. Sem NVIDIA, o instalador usa PyTorch CPU; a funcionalidade continua disponível, mas pode ficar lenta.
+O backend padrão usa Hugging Face **ZeroGPU**. É gratuito para uso público, porém possui fila e cotas diárias. Isso significa que o recurso pode ficar temporariamente ocupado ou indisponível quando a cota gratuita de GPU acabar.
 
-## Áudio de referência
+Para um serviço público sem fila/cotas seria necessário usar GPU paga ou hospedar infraestrutura própria.
 
-Recomendado:
+## Privacidade
 
-- 5 a 30 segundos.
-- Uma pessoa falando sozinha.
-- Sem música.
-- Pouco ruído e eco.
-- Preferencialmente WAV ou FLAC.
+- Vozes prontas: o texto é processado no navegador.
+- Favoritos e configurações: `localStorage`.
+- Histórico TTS: IndexedDB.
+- Referências personalizadas: IndexedDB no navegador.
+- A referência personalizada é enviada ao Hugging Face Space somente quando o usuário pede uma conversão.
+- Não apresente áudio sintético como se fosse uma gravação autêntica da pessoa usada como referência.
 
-As referências ficam no computador local em `engine/data/voices/` e essa pasta está ignorada pelo Git.
+## Publicação
 
-## Hospedagem
+O site é estático e pode continuar no GitHub Pages:
 
-O site continua inteiramente estático e pode ser hospedado de graça no GitHub Pages. O GitHub não executa Seed-VC; ele hospeda somente HTML/CSS/JS.
+1. `Settings > Pages`
+2. `Deploy from a branch`
+3. Branch `main`
+4. Pasta `/(root)`
 
-A inferência pesada de vozes personalizadas acontece no computador onde `start_windows.bat` está rodando.
+O deploy acontece automaticamente após alterações na `main`.
 
 ## Estrutura principal
 
 ```text
 kpnciavoice/
-├── app.js
-├── custom-voices.js
-├── custom-voices.css
 ├── index.html
 ├── styles.css
+├── app.js
 ├── tts-worker.js
-├── engine/
-│   ├── server.py
-│   ├── requirements.txt
-│   ├── setup_windows.bat
-│   ├── setup_windows.ps1
-│   ├── start_windows.bat
-│   └── README.md
-└── README.md
+├── custom-voices.js
+├── custom-voices.css
+├── .github/workflows/validate.yml
+└── engine/                 # legado/fallback local; não exigido pelo site
 ```
 
-Pastas locais criadas pelo engine e ignoradas pelo Git:
+## Dependências web
 
-```text
-engine/.venv/
-engine/seed-vc/
-engine/data/
-```
-
-## Privacidade
-
-- TTS comum é processado no navegador.
-- Favoritos e configurações ficam no navegador.
-- Referências de vozes personalizadas ficam no computador que executa o KPNC Voice Engine.
-- Durante a conversão, a fala-base viaja apenas da página para `127.0.0.1` no próprio computador.
-- Modelos e checkpoints públicos são baixados de seus provedores na primeira utilização.
-
-## Uso responsável
-
-Áudio sintético não deve ser apresentado como gravação autêntica de outra pessoa. Respeite direitos de voz, imagem, propriedade intelectual e as regras das plataformas onde o resultado for utilizado.
+- `kokoro-js`
+- `@pedrobef/vozz`
+- `@gradio/client@2.5.0`
+- Seed-VC executado remotamente no Hugging Face Space configurado.
 
 ## Créditos
 
 - Kokoro-82M e ecossistema Kokoro.
-- `kokoro-js`.
-- `@pedrobef/vozz` para TTS pt-BR no navegador.
-- Seed-VC para conversão zero-shot de voz.
-- KPNC Voice Studio: interface e integração.
+- Vozz para PT-BR.
+- Seed-VC para conversão zero-shot.
+- Gradio Client para comunicação com o Hugging Face Space.
+
+Consulte as licenças dos modelos e bibliotecas antes de redistribuir ou usar comercialmente.
