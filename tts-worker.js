@@ -1,9 +1,9 @@
-import { KokoroTTS } from "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js";
+import { KokoroTTS } from "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm";
 
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
 let tts = null;
 let loadingPromise = null;
-let engine = null;
+const engine = "WASM · Q8";
 
 function send(type, payload = {}) {
   self.postMessage({ type, ...payload });
@@ -15,70 +15,32 @@ function normalizeProgress(value) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-async function hasUsableWebGPU() {
-  try {
-    if (typeof navigator === "undefined" || !navigator.gpu) return false;
-    const adapter = await navigator.gpu.requestAdapter();
-    return Boolean(adapter);
-  } catch {
-    return false;
-  }
-}
-
 async function createTTS() {
   if (tts) return tts;
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    const webgpuAvailable = await hasUsableWebGPU();
+    send("loading", {
+      message: "Carregando Kokoro (modo compatível WASM)…",
+      engine,
+    });
 
-    // Kokoro recomenda FP32 no backend WebGPU e Q8 no backend WASM.
-    // Só tentamos WebGPU quando o navegador realmente entrega um adapter.
-    const attempts = webgpuAvailable
-      ? [
-          { device: "webgpu", dtype: "fp32", label: "WebGPU · FP32" },
-          { device: "wasm", dtype: "q8", label: "WASM · Q8" },
-        ]
-      : [{ device: "wasm", dtype: "q8", label: "WASM · Q8" }];
-
-    const errors = [];
-
-    for (const attempt of attempts) {
-      try {
-        send("loading", {
-          message: `Carregando Kokoro (${attempt.label})…`,
-          engine: attempt.label,
+    const instance = await KokoroTTS.from_pretrained(MODEL_ID, {
+      device: "wasm",
+      dtype: "q8",
+      progress_callback: (info) => {
+        const progress = normalizeProgress(info?.progress);
+        send("load-progress", {
+          status: info?.status ?? "progress",
+          file: typeof info?.file === "string" ? info.file.split("/").pop() : null,
+          progress,
         });
+      },
+    });
 
-        const instance = await KokoroTTS.from_pretrained(MODEL_ID, {
-          device: attempt.device,
-          dtype: attempt.dtype,
-          progress_callback: (info) => {
-            const progress = normalizeProgress(info?.progress);
-            send("load-progress", {
-              status: info?.status ?? "progress",
-              file: typeof info?.file === "string" ? info.file.split("/").pop() : null,
-              progress,
-            });
-          },
-        });
-
-        tts = instance;
-        engine = attempt.label;
-        send("ready", { engine });
-        return tts;
-      } catch (error) {
-        const detail = error?.message || String(error);
-        errors.push(`${attempt.label}: ${detail}`);
-        send("fallback", {
-          message: `${attempt.label} falhou. Tentando o próximo modo compatível…`,
-        });
-      }
-    }
-
-    throw new Error(
-      `Não foi possível iniciar o motor de voz. ${errors.join(" | ")}`
-    );
+    tts = instance;
+    send("ready", { engine });
+    return tts;
   })();
 
   try {
@@ -98,7 +60,7 @@ self.addEventListener("message", async (event) => {
     } catch (error) {
       send("error", {
         requestId: data.requestId ?? null,
-        message: error?.message || String(error),
+        message: `Falha ao carregar o motor WASM: ${error?.message || String(error)}`,
       });
     }
     return;
@@ -123,11 +85,7 @@ self.addEventListener("message", async (event) => {
 
     send("generating", { requestId, voice });
 
-    const audio = await model.generate(text, {
-      voice,
-      speed,
-    });
-
+    const audio = await model.generate(text, { voice, speed });
     const blob = audio.toBlob();
 
     send("result", {
