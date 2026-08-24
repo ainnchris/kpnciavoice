@@ -9,7 +9,8 @@ export default {
     try {
       return await handleRequest(request, env);
     } catch (error) {
-      return json({ error: error?.message || "Erro interno no KPNC Fish proxy." }, 500, request, env);
+      const status = Number.isInteger(error?.status) ? error.status : 500;
+      return json({ error: error?.message || "Erro interno no KPNC Fish proxy." }, status, request, env);
     }
   },
 };
@@ -78,12 +79,6 @@ function corsHeaders(origin, env) {
   };
   if (origin && allowed.includes(origin)) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
-}
-
-function withCors(response, request, env) {
-  const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(corsHeaders(request.headers.get("Origin") || "", env))) headers.set(key, value);
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 function json(data, status, request, env) {
