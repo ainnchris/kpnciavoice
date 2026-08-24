@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="KPNC Voice Gallery: biblioteca visual de vozes, estúdio e catálogo online." />
+  <meta name="theme-color" content="#0b1020" />
   <title>KPNC Voice Gallery</title>
-  <meta name="description" content="Catálogo visual de vozes com biblioteca online, estúdio de geração e histórico local." />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./custom-voices.css" />
+  <script src="./fish-config.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -17,18 +19,15 @@
       <div class="sidebar-top">
         <div class="brand">
           <div class="brand-logo">KG</div>
-          <div>
-            <strong>KPNC Voice Gallery</strong>
-            <span>Biblioteca criativa de vozes</span>
-          </div>
+          <div><strong>KPNC Voice Gallery</strong><span>Biblioteca criativa de vozes</span></div>
         </div>
         <button class="ghost-icon mobile-close" id="mobileMenu" aria-label="Abrir menu">☰</button>
       </div>
 
-      <nav class="nav-stack">
+      <nav class="nav-stack" aria-label="Navegação principal">
         <button class="nav-link active" data-view-target="discovery">Descobrir</button>
         <button class="nav-link" data-view-target="studio">Studio</button>
-        <button class="nav-link" data-view-target="online">Catálogo online</button>
+        <button class="nav-link" data-view-target="custom">Voice Cloud</button>
         <button class="nav-link" data-view-target="favorites">Favoritas</button>
         <button class="nav-link" data-view-target="history">Histórico</button>
         <button class="nav-link" data-view-target="settings">Preferências</button>
@@ -37,7 +36,7 @@
       <div class="sidebar-card soft-card">
         <div class="mini-eyebrow">Acesso rápido</div>
         <strong>Geração instantânea</strong>
-        <p>Escolha uma voz, personalize a mensagem e exporte seu áudio sem sair do navegador.</p>
+        <p>Explore vozes, escreva uma mensagem e exporte o áudio em poucos cliques.</p>
         <button class="primary-btn full-width" id="heroStudio">Abrir Studio</button>
       </div>
     </aside>
@@ -46,20 +45,11 @@
       <header class="topbar">
         <div class="topbar-left">
           <button class="ghost-icon mobile-only" id="mobileMenuTop" aria-label="Abrir navegação">☰</button>
-          <div>
-            <div class="mini-eyebrow">Painel principal</div>
-            <h1>KPNC Voice Gallery</h1>
-          </div>
+          <div><div class="mini-eyebrow">Painel principal</div><h1>KPNC Voice Gallery</h1></div>
         </div>
         <div class="topbar-actions">
-          <label class="searchbox">
-            <span>⌕</span>
-            <input id="globalSearch" type="search" placeholder="Buscar por voz, idioma ou estilo" />
-          </label>
-          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema">
-            <span class="theme-dot"></span>
-            <span id="themeToggleText">Dark</span>
-          </button>
+          <label class="searchbox"><span>⌕</span><input id="globalSearch" type="search" autocomplete="off" placeholder="Buscar por voz, idioma ou estilo" /></label>
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema"><span class="theme-dot"></span><span id="themeToggleText">Dark</span></button>
         </div>
       </header>
 
@@ -68,269 +58,89 @@
           <div class="hero hero-grid">
             <div>
               <div class="mini-eyebrow">Coleção visual</div>
-              <h2>Descubra vozes com uma interface nova, visual e pronta para usar.</h2>
-              <p>Explore perfis com capas visuais, prévias rápidas e navegação por idioma. Escolha uma voz e leve direto para o estúdio.</p>
-              <div class="hero-actions">
-                <button class="primary-btn" id="heroStudioSecondary">Criar no Studio</button>
-                <button class="ghost-btn" data-view-target="online">Abrir catálogo online</button>
-              </div>
-              <div class="hero-stats">
-                <article><strong id="heroVoicesCount">31</strong><span>vozes locais</span></article>
-                <article><strong>2</strong><span>temas visuais</span></article>
-                <article><strong id="voiceCountText">31 vozes exibidas</strong><span>biblioteca atual</span></article>
-              </div>
+              <h2>Encontre a voz certa para cada ideia.</h2>
+              <p>Uma biblioteca visual para explorar perfis, ouvir prévias e levar qualquer voz direto ao estúdio.</p>
+              <div class="hero-actions"><button class="primary-btn" id="heroStudioSecondary">Criar no Studio</button><button class="ghost-btn" data-view-target="custom">Explorar Voice Cloud</button></div>
+              <div class="hero-stats"><article><strong>31</strong><span>vozes locais</span></article><article><strong>2</strong><span>temas visuais</span></article><article><strong id="voiceCountText">31 vozes exibidas</strong><span>biblioteca atual</span></article></div>
             </div>
             <div class="hero-art-panel soft-card">
-              <div class="hero-collage">
-                <div class="hero-bubble bubble-a"></div>
-                <div class="hero-bubble bubble-b"></div>
-                <div class="hero-bubble bubble-c"></div>
-                <div class="hero-bubble bubble-d"></div>
-              </div>
-              <div class="hero-art-copy">
-                <span class="mini-eyebrow">Experiência visual</span>
-                <strong>Capas dinâmicas por voz</strong>
-                <p>Cada perfil recebe sua própria arte visual, com estilo, categoria e identidade melhor definidos.</p>
-              </div>
+              <div class="hero-collage"><div class="hero-bubble bubble-a"></div><div class="hero-bubble bubble-b"></div><div class="hero-bubble bubble-c"></div><div class="hero-bubble bubble-d"></div></div>
+              <div class="hero-art-copy"><span class="mini-eyebrow">Experiência visual</span><strong>Capas próprias para cada voz</strong><p>Cada perfil ganha uma identidade visual para deixar a descoberta mais rápida e agradável.</p></div>
             </div>
           </div>
-
-          <div class="section-head">
-            <div>
-              <div class="mini-eyebrow">Filtros</div>
-              <h3>Biblioteca local</h3>
-            </div>
-            <div id="languageFilters" class="chip-row"></div>
-          </div>
+          <div class="section-head"><div><div class="mini-eyebrow">Filtros</div><h3>Biblioteca</h3></div><div id="languageFilters" class="chip-row"></div></div>
           <div class="voice-grid" id="voiceGrid"></div>
         </section>
 
         <section class="view" id="view-studio">
-          <div class="section-head">
-            <div>
-              <div class="mini-eyebrow">Estúdio</div>
-              <h3>Monte o áudio da voz selecionada</h3>
-            </div>
-            <span class="engine-pill" id="enginePill">Pronto para gerar</span>
-          </div>
-
+          <div class="section-head"><div><div class="mini-eyebrow">Estúdio</div><h3>Transforme texto em voz</h3></div><span class="engine-pill" id="enginePill">Pronto para gerar</span></div>
           <div class="studio-layout">
-            <div class="soft-card selected-panel" id="selectedVoicePanel"></div>
-
-            <div class="soft-card studio-card">
-              <div class="form-head">
-                <h4>Texto</h4>
-                <span class="caption"><strong id="charCount">0</strong>/1200</span>
-              </div>
-              <textarea id="speechText" class="text-area" placeholder="Digite o texto que você quer ouvir..."></textarea>
-
-              <div class="control-grid">
-                <label class="control-block">
-                  <span>Velocidade</span>
-                  <input id="speedRange" type="range" min="0.5" max="2" step="0.05" value="1" />
-                  <small id="speedValue">1.00×</small>
-                </label>
-              </div>
-
-              <div class="action-row">
-                <button class="primary-btn" id="generateBtn">Gerar áudio</button>
-                <button class="secondary-btn" id="previewSelectedBtn">Ouvir prévia</button>
-                <button class="ghost-btn" id="loadModelBtn">Preparar voz</button>
-              </div>
-
-              <div class="progress-track" id="progressTrack">
-                <div class="progress-bar" id="progressBar"></div>
-              </div>
-              <p class="status-text" id="generationStatus">Tudo pronto. Escolha uma voz e gere seu áudio.</p>
-            </div>
-
-            <div class="soft-card result-card" id="resultCard">
-              <div class="form-head">
-                <h4>Resultado</h4>
-                <button class="secondary-btn" id="downloadCurrentBtn">Baixar</button>
-              </div>
-              <audio id="resultAudio" controls preload="none"></audio>
-            </div>
+            <aside class="soft-card selected-panel" id="selectedVoicePanel"></aside>
+            <section class="soft-card studio-card">
+              <div class="form-head"><h4>Texto</h4><span class="caption"><strong id="charCount">0</strong>/1200</span></div>
+              <textarea class="text-area" id="speechText" maxlength="1200" placeholder="Digite o que a voz deve falar..."></textarea>
+              <div class="control-grid"><label class="control-block"><span>Velocidade</span><input id="speedRange" type="range" min="0.5" max="2" step="0.05" value="1" /><small id="speedValue">1.00×</small></label></div>
+              <div class="action-row"><button class="primary-btn" id="generateBtn">Gerar áudio</button><button class="secondary-btn" id="previewSelectedBtn">Ouvir prévia</button><button class="ghost-btn" id="loadModelBtn">Preparar voz</button></div>
+              <div class="progress-track" id="progressTrack"><div class="progress-bar" id="progressBar"></div></div>
+              <p class="status-text" id="generationStatus">Tudo pronto para começar.</p>
+            </section>
+            <section class="soft-card result-card" id="resultCard"><div class="form-head"><h4>Resultado</h4><button class="secondary-btn" id="downloadCurrentBtn">Baixar</button></div><audio id="resultAudio" controls preload="metadata"></audio></section>
           </div>
         </section>
 
-        <section class="view" id="view-online">
-          <div class="section-head">
-            <div>
-              <div class="mini-eyebrow">Catálogo online</div>
-              <h3>Perfis públicos, capas ilustradas e vozes personalizadas</h3>
-            </div>
-            <span class="engine-pill" id="onlineConnectionBadge">Conectando…</span>
+        <section class="view" id="view-custom">
+          <div class="section-head custom-head"><div><div class="mini-eyebrow">Voice Cloud</div><h3>Catálogo online de vozes</h3><p class="status-text">Descubra perfis públicos, vozes licenciadas e crie sua própria coleção.</p></div><div class="custom-engine-state offline" id="fishApiState">● Catálogo conectando</div></div>
+
+          <div class="soft-card fish-api-setup" id="fishApiSetup" hidden>
+            <div><strong>Catálogo online ainda não configurado</strong><span>Informe o endereço do serviço para ativar a biblioteca.</span></div>
+            <div class="custom-inline"><input class="text-input" id="fishApiInput" placeholder="https://seu-endpoint.workers.dev" spellcheck="false" /><button class="secondary-btn" id="fishSaveApiBtn">Salvar</button></div>
           </div>
 
-          <div class="online-layout">
-            <div class="soft-card catalog-panel">
-              <div class="catalog-toolbar">
-                <label class="searchbox compact">
-                  <span>⌕</span>
-                  <input id="onlineSearch" type="search" placeholder="Buscar vozes online" />
-                </label>
-                <select id="onlineLanguage" class="text-input small-select">
-                  <option value="">Todos os idiomas</option>
-                  <option value="pt">Português</option>
-                  <option value="en">Inglês</option>
-                  <option value="es">Espanhol</option>
-                  <option value="fr">Francês</option>
-                  <option value="it">Italiano</option>
-                  <option value="ja">Japonês</option>
-                </select>
-                <select id="onlineSort" class="text-input small-select">
-                  <option value="task_count">Mais usadas</option>
-                  <option value="score">Em destaque</option>
-                  <option value="created_at">Recentes</option>
-                </select>
-                <label class="toggle-inline"><input id="onlineLicensed" type="checkbox" /> Somente licenciadas</label>
-              </div>
-              <div class="catalog-meta"><span id="onlineCount">Carregando vozes…</span><button class="ghost-btn" id="onlineRefreshBtn">Atualizar</button></div>
-              <div class="voice-grid online-grid" id="onlineVoicesGrid"></div>
+          <section class="soft-card catalog-panel fish-library-panel">
+            <div class="fish-toolbar-head"><div><div class="mini-eyebrow">Descoberta</div><h3>Biblioteca pública</h3><p class="status-text" id="fishBackendNote">Carregando vozes disponíveis...</p></div><button class="ghost-btn" id="fishRefreshBtn">Atualizar</button></div>
+            <div class="catalog-toolbar fish-filters">
+              <label class="searchbox compact fish-search-field"><span>⌕</span><input id="fishVoiceSearch" placeholder="Buscar nome, personagem, narrador..." /></label>
+              <select class="text-input small-select custom-select" id="fishLanguage"><option value="">Todos os idiomas</option><option value="pt">Português</option><option value="en">English</option><option value="es">Español</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="ru">Русский</option><option value="it">Italiano</option></select>
+              <select class="text-input small-select custom-select" id="fishSort"><option value="task_count">Mais usadas</option><option value="score">Em destaque</option><option value="created_at">Recentes</option></select>
+              <label class="toggle-inline fish-toggle"><input type="checkbox" id="fishLicensedOnly" /> Somente licenciadas</label>
             </div>
+            <div class="catalog-meta fish-list-summary"><span id="fishVoiceCount">0 vozes</span><span>Selecione um perfil para abrir no estúdio.</span></div>
+            <div class="voice-grid online-grid" id="fishVoiceGrid"><div class="empty" style="grid-column:1/-1">Conectando ao catálogo...</div></div>
+          </section>
 
-            <div class="online-side">
-              <div class="soft-card selected-panel" id="onlineSelectedPanel"></div>
+          <div class="online-layout fish-studio-layout">
+            <section class="soft-card studio-card custom-panel">
+              <div class="mini-eyebrow">Studio Cloud</div><h3>Gerar com a voz escolhida</h3>
+              <div class="custom-selected" id="fishSelectedVoice"><div class="custom-selected-icon">◎</div><div><strong>Nenhuma voz selecionada</strong><span>Escolha um perfil da biblioteca acima.</span></div></div>
+              <div class="form-head"><h4>Texto</h4><span class="caption"><strong id="fishCharCount">0</strong>/5000</span></div>
+              <textarea class="text-area fish-textarea" id="fishSpeechText" maxlength="5000" placeholder="Digite o texto que você quer gerar..."></textarea>
+              <div class="control-grid two-cols custom-controls fish-generation-controls"><label class="control-block"><span>Velocidade</span><input id="fishSpeed" type="range" min="0.5" max="2" step="0.05" value="1" /><small id="fishSpeedValue">1.00×</small></label><label class="control-block"><span>Formato</span><select class="text-input custom-select" id="fishFormat"><option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">Opus</option></select></label></div>
+              <div class="action-row"><button class="primary-btn" id="fishGenerateBtn">Gerar nesta voz</button><span class="status-text" id="fishGenerationStatus">Selecione uma voz.</span></div>
+              <div class="result-card" id="fishResultCard"><div class="form-head"><h4>Resultado</h4><button class="secondary-btn" id="fishDownloadBtn">Baixar</button></div><audio id="fishResultAudio" controls preload="metadata"></audio></div>
+            </section>
 
-              <div class="soft-card studio-card">
-                <div class="form-head">
-                  <h4>Gerar com a voz online</h4>
-                  <span class="caption"><strong id="onlineCharCount">0</strong>/5000</span>
-                </div>
-                <textarea id="onlineText" class="text-area" placeholder="Digite um texto para gerar com a voz online selecionada..."></textarea>
-                <div class="control-grid two-cols">
-                  <label class="control-block">
-                    <span>Velocidade</span>
-                    <input id="onlineSpeed" type="range" min="0.5" max="2" step="0.05" value="1" />
-                    <small id="onlineSpeedValue">1.00×</small>
-                  </label>
-                  <label class="control-block">
-                    <span>Formato</span>
-                    <select id="onlineFormat" class="text-input">
-                      <option value="mp3">MP3</option>
-                      <option value="wav">WAV</option>
-                      <option value="opus">OPUS</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="action-row">
-                  <button class="primary-btn" id="onlineGenerateBtn">Gerar nesta voz</button>
-                  <button class="secondary-btn" id="onlinePreviewBtn">Ouvir amostra</button>
-                </div>
-                <p class="status-text" id="onlineStatusText">Escolha um perfil do catálogo para começar.</p>
-              </div>
-
-              <div class="soft-card result-card" id="onlineResultCard">
-                <div class="form-head">
-                  <h4>Resultado online</h4>
-                  <button class="secondary-btn" id="onlineDownloadBtn">Baixar</button>
-                </div>
-                <audio id="onlineAudio" controls preload="none"></audio>
-              </div>
-            </div>
-          </div>
-
-          <div class="section-head section-top-gap">
-            <div>
-              <div class="mini-eyebrow">Biblioteca própria</div>
-              <h3>Adicionar uma nova voz ao seu catálogo</h3>
-            </div>
-            <span class="subtle-label">Salva neste navegador</span>
-          </div>
-
-          <div class="online-layout">
-            <div class="soft-card form-panel">
-              <form id="cloneVoiceForm" class="stack-form">
-                <div class="grid-two">
-                  <label class="control-block"><span>Nome da voz</span><input class="text-input" id="cloneName" name="name" required maxlength="80" placeholder="Ex.: Narrador Cinemático" /></label>
-                  <label class="control-block"><span>Visibilidade</span><select class="text-input" id="cloneVisibility" name="visibility"><option value="unlist">Não listada</option><option value="private">Privada</option><option value="public">Pública</option></select></label>
-                </div>
-                <label class="control-block"><span>Transcrição de referência (opcional)</span><textarea class="text-area compact" id="cloneTranscript" name="transcript" placeholder="Se quiser, descreva ou transcreva o áudio de referência."></textarea></label>
-                <label class="control-block"><span>Tags (opcional)</span><input class="text-input" id="cloneTags" name="tags" maxlength="160" placeholder="cinema, grave, narrativa" /></label>
-                <div class="grid-two">
-                  <label class="control-block"><span>Áudio de referência</span><input class="text-input" id="cloneReference" name="reference" type="file" accept="audio/*" required /></label>
-                  <label class="control-block"><span>Capa visual (opcional)</span><input class="text-input" id="cloneCover" name="cover" type="file" accept="image/*" /></label>
-                </div>
-                <label class="consent-line"><input id="cloneConsent" name="rights_confirmed" type="checkbox" required /> Confirmo que possuo direitos, permissões e consentimentos necessários para usar esta referência e publicar uma voz sintética a partir dela.</label>
-                <div class="action-row">
-                  <button class="primary-btn" type="submit" id="cloneSubmitBtn">Criar voz</button>
-                  <button class="ghost-btn" type="reset">Limpar</button>
-                </div>
-                <p class="status-text" id="cloneStatusText">Quando criada, a nova voz ficará disponível aqui mesmo no seu catálogo pessoal.</p>
-              </form>
-            </div>
-
-            <div class="soft-card catalog-panel">
-              <div class="catalog-meta"><span id="myVoicesCount">Nenhuma voz criada ainda.</span></div>
-              <div class="voice-grid online-grid" id="myVoicesGrid"></div>
-            </div>
+            <section class="soft-card form-panel custom-panel">
+              <div class="mini-eyebrow">Biblioteca própria</div><h3>Criar voz persistente</h3><p class="status-text">Adicione uma referência e crie um perfil reutilizável no seu catálogo.</p>
+              <label class="control-block"><span>Nome da voz</span><input class="text-input" id="cloneName" maxlength="80" placeholder="Ex.: Narrador cinematográfico" /></label>
+              <label class="control-block"><span>Áudio de referência</span><input class="text-input custom-file" id="cloneReference" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg" /></label>
+              <label class="control-block"><span>Transcrição opcional</span><textarea class="text-area compact clone-transcript" id="cloneTranscript" maxlength="1500" placeholder="Transcreva o áudio, se quiser."></textarea></label>
+              <label class="control-block"><span>Capa visual</span><input class="text-input custom-file" id="cloneCover" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+              <div class="grid-two custom-controls"><label class="control-block"><span>Visibilidade</span><select class="text-input custom-select" id="cloneVisibility"><option value="unlist" selected>Não listada</option><option value="private">Privada</option><option value="public">Pública</option></select></label><label class="control-block"><span>Tags</span><input class="text-input" id="cloneTags" maxlength="160" placeholder="cinema, grave, narrativa" /></label></div>
+              <label class="consent-line custom-check"><input id="cloneConsent" type="checkbox" /><span>Confirmo que possuo os direitos, permissões e consentimentos necessários para usar esta referência e publicar conteúdo sintético a partir dela.</span></label>
+              <button class="primary-btn custom-full" id="cloneBtn">Criar voz</button><p class="status-text" id="cloneStatus">A nova voz será adicionada ao seu catálogo quando estiver pronta.</p>
+            </section>
           </div>
         </section>
 
-        <section class="view" id="view-favorites">
-          <div class="section-head">
-            <div>
-              <div class="mini-eyebrow">Favoritas</div>
-              <h3>Sua coleção salva</h3>
-            </div>
-          </div>
-          <div class="voice-grid" id="favoritesGrid"></div>
-        </section>
+        <section class="view" id="view-favorites"><div class="section-head"><div><div class="mini-eyebrow">Favoritas</div><h3>Sua coleção salva</h3></div></div><div class="voice-grid" id="favoritesGrid"></div></section>
 
-        <section class="view" id="view-history">
-          <div class="section-head">
-            <div>
-              <div class="mini-eyebrow">Histórico</div>
-              <h3>Áudios gerados recentemente</h3>
-            </div>
-            <button class="ghost-btn" id="clearHistoryBtn">Apagar histórico</button>
-          </div>
-          <div class="history-list" id="historyList"></div>
-        </section>
+        <section class="view" id="view-history"><div class="section-head"><div><div class="mini-eyebrow">Histórico</div><h3>Áudios recentes</h3></div><button class="ghost-btn" id="clearHistoryBtn">Apagar histórico</button></div><div class="history-list" id="historyList"></div></section>
 
         <section class="view" id="view-settings">
           <div class="settings-grid">
-            <div class="soft-card settings-card">
-              <div class="section-head minimal">
-                <div>
-                  <div class="mini-eyebrow">Preferências</div>
-                  <h3>Ajustes visuais</h3>
-                </div>
-              </div>
-              <p>Personalize a aparência do painel, o nome das vozes e seus dados salvos neste navegador.</p>
-              <div class="stats-grid spaced">
-                <div class="stat"><strong id="favStat">0</strong><span>favoritas</span></div>
-                <div class="stat"><strong id="historyStat">0</strong><span>áudios</span></div>
-                <div class="stat"><strong>2</strong><span>temas</span></div>
-              </div>
-              <div class="inline-setting">
-                <label class="control-block grow">
-                  <span>Apelido da voz selecionada</span>
-                  <input id="aliasInput" class="text-input" placeholder="Ex.: Voz principal" />
-                </label>
-              </div>
-              <div class="action-row">
-                <button class="secondary-btn" id="saveAliasBtn">Salvar apelido</button>
-                <button class="ghost-btn" id="resetAliasBtn">Restaurar nome</button>
-                <button class="ghost-btn" id="settingsLoadBtn">Preparar voz atual</button>
-              </div>
-            </div>
-
-            <div class="soft-card settings-card">
-              <div class="section-head minimal">
-                <div>
-                  <div class="mini-eyebrow">Status</div>
-                  <h3>Painel atual</h3>
-                </div>
-              </div>
-              <div class="info-list">
-                <div class="info-row"><span>Tema atual</span><strong id="settingsTheme">Dark</strong></div>
-                <div class="info-row"><span>Biblioteca local</span><strong>31 vozes</strong></div>
-                <div class="info-row"><span>Catálogo visual</span><strong>Capas automáticas</strong></div>
-                <div class="info-row"><span>Modo de geração</span><strong id="settingsEngine">Pronto</strong></div>
-              </div>
-            </div>
+            <div class="soft-card settings-card"><div class="mini-eyebrow">Preferências</div><h3>Ajustes visuais</h3><p class="status-text">Personalize a aparência, favoritos e nomes das vozes.</p><div class="stats-grid spaced"><div class="stat"><strong id="favStat">0</strong><span>favoritas</span></div><div class="stat"><strong id="historyStat">0</strong><span>áudios</span></div><div class="stat"><strong>2</strong><span>temas</span></div></div><label class="control-block"><span>Apelido da voz selecionada</span><input id="aliasInput" class="text-input" placeholder="Ex.: Voz principal" /></label><div class="action-row"><button class="secondary-btn" id="saveAliasBtn">Salvar apelido</button><button class="ghost-btn" id="resetAliasBtn">Restaurar nome</button><button class="ghost-btn" id="settingsLoadBtn">Preparar voz atual</button></div></div>
+            <div class="soft-card settings-card"><div class="mini-eyebrow">Painel</div><h3>Estado atual</h3><div class="info-list"><div class="info-row"><span>Tema</span><strong id="settingsTheme">Dark</strong></div><div class="info-row"><span>Biblioteca local</span><strong>31 vozes</strong></div><div class="info-row"><span>Capas</span><strong>Visuais automáticos</strong></div><div class="info-row"><span>Modo atual</span><strong id="settingsEngine">Pronto</strong></div></div></div>
+            <div class="soft-card settings-card"><div class="mini-eyebrow">Catálogo</div><h3>Voice Cloud</h3><p class="status-text">Biblioteca online e perfis próprios organizados em uma única área.</p><div class="info-list"><div class="info-row"><span>Conexão</span><strong id="fishModelSetting">Voice Cloud</strong></div><div class="info-row"><span>Privacidade</span><strong>Chaves protegidas</strong></div></div></div>
           </div>
         </section>
       </div>
@@ -338,8 +148,8 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./fish-config.js"></script>
   <script type="module" src="./app.js"></script>
   <script type="module" src="./custom-voices.js"></script>
+  <script src="./ui-overrides.js"></script>
 </body>
 </html>
