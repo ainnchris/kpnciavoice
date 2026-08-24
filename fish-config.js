@@ -111,6 +111,10 @@ window.KPNC_FISH_API_BASE = 'https://kpnc-voice-api.erikchristian2.workers.dev';
     updateCatalogControls();
   }
 
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+
   function updateCatalogControls() {
     const grid = document.querySelector('#fishVoiceGrid');
     if (!grid) return;
@@ -136,25 +140,24 @@ window.KPNC_FISH_API_BASE = 'https://kpnc-voice-api.erikchristian2.workers.dev';
     const loaded = catalog.loaded || document.querySelectorAll('#fishVoiceGrid [data-fish-card]').length;
     const total = catalog.total || loaded;
 
-    if (text) {
-      text.textContent = catalog.loading
-        ? 'Carregando catálogo...'
-        : total > loaded
-          ? `${loaded.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} vozes carregadas`
-          : `${loaded.toLocaleString('pt-BR')} vozes carregadas`;
-    }
+    const statusText = catalog.loading
+      ? 'Carregando catálogo...'
+      : total > loaded
+        ? `${loaded.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} vozes carregadas`
+        : `${loaded.toLocaleString('pt-BR')} vozes carregadas`;
+    setText(text, statusText);
 
     if (button) {
       button.disabled = catalog.loading || !catalog.hasMore;
-      button.textContent = catalog.loading ? 'Carregando...' : catalog.hasMore ? `Carregar mais ${catalog.pageSize}` : 'Todas carregadas';
+      setText(button, catalog.loading ? 'Carregando...' : catalog.hasMore ? `Carregar mais ${catalog.pageSize}` : 'Todas carregadas');
       button.style.display = total > catalog.pageSize || catalog.hasMore ? '' : 'none';
     }
 
     const note = document.querySelector('#fishBackendNote');
-    if (note && /48 por busca|modelos encontrados|vozes disponíveis/i.test(note.textContent || '')) {
-      note.textContent = total > loaded
+    if (note && /48 por busca|modelos encontrados|vozes disponíveis|vozes encontradas no catálogo|vozes carregadas do catálogo/i.test(note.textContent || '')) {
+      setText(note, total > loaded
         ? `${total.toLocaleString('pt-BR')} vozes encontradas no catálogo. ${loaded.toLocaleString('pt-BR')} carregadas agora.`
-        : `${loaded.toLocaleString('pt-BR')} vozes carregadas do catálogo.`;
+        : `${loaded.toLocaleString('pt-BR')} vozes carregadas do catálogo.`);
     }
   }
 
@@ -168,7 +171,15 @@ window.KPNC_FISH_API_BASE = 'https://kpnc-voice-api.erikchristian2.workers.dev';
 
   document.addEventListener('DOMContentLoaded', () => {
     updateCatalogControls();
-    const observer = new MutationObserver(() => updateCatalogControls());
+    let scheduled = false;
+    const observer = new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        updateCatalogControls();
+      });
+    });
     observer.observe(document.body, { childList: true, subtree: true });
   });
 })();
