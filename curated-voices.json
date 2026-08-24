@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "voices": [
+    {
+      "id": "catalog-atlas-pt",
+      "name": "Atlas PT",
+      "badge": "Demo oficial",
+      "category": "Português",
+      "language": "pt",
+      "description": "Perfil de demonstração do Chatterbox para português.",
+      "referenceUrl": "https://storage.googleapis.com/chatterbox-demo-samples/mtl_prompts/pt_m1.flac"
+    },
+    {
+      "id": "catalog-aurora-en",
+      "name": "Aurora EN",
+      "badge": "Demo oficial",
+      "category": "English",
+      "language": "en",
+      "description": "Perfil feminino de demonstração do Chatterbox em inglês.",
+      "referenceUrl": "https://storage.googleapis.com/chatterbox-demo-samples/mtl_prompts/en_f1.flac"
+    },
+    {
+      "id": "catalog-luna-es",
+      "name": "Luna ES",
+      "badge": "Demo oficial",
+      "category": "Español",
+      "language": "es",
+      "description": "Perfil feminino de demonstração do Chatterbox em espanhol.",
+      "referenceUrl": "https://storage.googleapis.com/chatterbox-demo-samples/mtl_prompts/es_f1.flac"
+    },
+    {
+      "id": "catalog-elise-fr",
+      "name": "Élise FR",
+      "badge": "Demo oficial",
+      "category": "Français",
+      "language": "fr",
+      "description": "Perfil feminino de demonstração do Chatterbox em francês.",
+      "referenceUrl": "https://storage.googleapis.com/chatterbox-demo-samples/mtl_prompts/fr_f1.flac"
+    },
+    {
+      "id": "catalog-marco-it",
+      "name": "Marco IT",
+      "badge": "Demo oficial",
+      "category": "Italiano",
+      "language": "it",
+      "description": "Perfil masculino de demonstração do Chatterbox em italiano.",
+      "referenceUrl": "https://storage.googleapis.com/chatterbox-demo-samples/mtl_prompts/it_m1.flac"
+    }
+  ]
+}
