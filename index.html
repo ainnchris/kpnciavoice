@@ -4,9 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#070a10" />
-  <meta name="description" content="KPNC Voice Studio: geração de voz local no navegador com Kokoro TTS." />
+  <meta name="description" content="KPNC Voice Studio: TTS local no navegador e vozes personalizadas com engine local." />
   <title>KPNC Voice Studio</title>
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./custom-voices.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -22,6 +23,7 @@
       <nav class="nav" aria-label="Navegação principal">
         <button class="nav-button active" data-view-target="discovery"><span class="nav-icon">◈</span> Discovery</button>
         <button class="nav-button" data-view-target="studio"><span class="nav-icon">✦</span> Studio</button>
+        <button class="nav-button" data-view-target="custom"><span class="nav-icon">◎</span> Personalizadas</button>
         <button class="nav-button" data-view-target="favorites"><span class="nav-icon">♥</span> Favoritas</button>
         <button class="nav-button" data-view-target="history"><span class="nav-icon">↺</span> Histórico</button>
         <button class="nav-button" data-view-target="settings"><span class="nav-icon">⚙</span> Configurações</button>
@@ -29,7 +31,7 @@
 
       <div class="sidebar-note">
         <strong>Privado por padrão</strong>
-        O texto e o áudio são processados no seu navegador. O modelo é baixado na primeira utilização e fica em cache.
+        O TTS comum roda no navegador. A clonagem usa opcionalmente o KPNC Voice Engine no seu próprio PC.
       </div>
     </aside>
 
@@ -46,9 +48,9 @@
       <div class="content">
         <section class="view active" id="view-discovery">
           <div class="hero">
-            <div class="hero-kicker">100% no navegador</div>
+            <div class="hero-kicker">IA local + engine pessoal</div>
             <h1>Sua biblioteca de vozes, sem mensalidade.</h1>
-            <p>Escolha entre 54 vozes do Kokoro, gere fala diretamente no navegador e salve tudo localmente. Sem servidor de IA, sem créditos por geração e sem chave de API.</p>
+            <p>31 vozes compatíveis nesta build, com português e inglês no navegador. Para vozes personalizadas, o Seed-VC roda no seu próprio computador, sem servidor de GPU pago.</p>
             <div class="hero-actions">
               <button class="primary-btn" id="heroStudio">Abrir Studio ✦</button>
               <button class="secondary-btn" id="loadModelBtn">Carregar IA agora</button>
@@ -58,7 +60,7 @@
           <div class="section-head">
             <div>
               <h2>Discovery</h2>
-              <p id="voiceCountText">54 vozes disponíveis</p>
+              <p id="voiceCountText">31 vozes disponíveis</p>
             </div>
             <div class="filters" id="languageFilters"></div>
           </div>
@@ -107,6 +109,115 @@
           </div>
         </section>
 
+        <section class="view" id="view-custom">
+          <div class="section-head custom-head">
+            <div>
+              <h2>Vozes personalizadas</h2>
+              <p>Cadastre uma referência curta e converta o TTS para esse timbre usando Seed-VC no seu PC.</p>
+            </div>
+            <div class="custom-engine-state offline" id="customEngineState">● Engine local desconectado</div>
+          </div>
+
+          <div class="custom-callout">
+            <strong>Como funciona</strong>
+            <span>Texto → Vozz/Kokoro gera uma fala-base → Seed-VC converte para a referência escolhida → WAV final.</span>
+          </div>
+
+          <div class="custom-layout">
+            <section class="panel custom-panel">
+              <div class="custom-panel-title">
+                <div>
+                  <h2>KPNC Voice Engine</h2>
+                  <p class="panel-sub">O site conversa com o engine apenas pelo endereço local do seu computador.</p>
+                </div>
+              </div>
+
+              <label class="form-label" for="customEngineUrl">Endereço do engine</label>
+              <div class="custom-inline">
+                <input class="text-input" id="customEngineUrl" value="http://127.0.0.1:7865" spellcheck="false" />
+                <button class="secondary-btn" id="customConnectBtn">Conectar</button>
+              </div>
+              <p class="custom-hint" id="customEngineDetails">Instale e inicie a pasta <code>engine</code> do projeto para liberar a clonagem.</p>
+
+              <div class="custom-divider"></div>
+
+              <h3>Adicionar voz</h3>
+              <label class="form-label" for="customVoiceName">Nome</label>
+              <input class="text-input" id="customVoiceName" maxlength="60" placeholder="Ex.: Narrador cinematográfico" />
+
+              <label class="form-label" for="customReferenceFile">Áudio de referência</label>
+              <input class="custom-file" id="customReferenceFile" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg" />
+              <p class="custom-hint">Use de 5 a 30 segundos, com uma pessoa falando sozinha, pouco ruído e sem música.</p>
+
+              <label class="form-label" for="customImageFile">Imagem da voz <small>opcional</small></label>
+              <input class="custom-file" id="customImageFile" type="file" accept="image/png,image/jpeg,image/webp" />
+
+              <label class="custom-check">
+                <input id="customRightsCheck" type="checkbox" />
+                <span>Entendo que a saída é sintética e não deve ser apresentada como uma gravação autêntica da pessoa da referência.</span>
+              </label>
+
+              <button class="primary-btn custom-full" id="customAddVoiceBtn">+ Adicionar voz personalizada</button>
+            </section>
+
+            <section class="panel custom-panel">
+              <h2>Gerar com voz personalizada</h2>
+              <p class="panel-sub">A fala-base é criada no navegador e enviada ao engine local para conversão.</p>
+
+              <div class="custom-selected" id="customSelectedVoice">
+                <div class="custom-selected-icon">◎</div>
+                <div><strong>Nenhuma voz selecionada</strong><span>Cadastre ou escolha uma voz abaixo.</span></div>
+              </div>
+
+              <label class="form-label" for="customSpeechText"><span>Texto</span><small><span id="customCharCount">0</span>/600</small></label>
+              <textarea class="textarea" id="customSpeechText" maxlength="600" placeholder="Digite o que a voz personalizada deve falar…"></textarea>
+
+              <div class="custom-controls">
+                <div>
+                  <label class="form-label" for="customBaseVoice">Voz-base PT-BR</label>
+                  <select class="custom-select" id="customBaseVoice">
+                    <option value="pm_alex">Alex</option>
+                    <option value="pf_dora">Dora</option>
+                    <option value="pm_santa">Santa</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label" for="customQuality">Qualidade / velocidade</label>
+                  <select class="custom-select" id="customQuality">
+                    <option value="4">Rápida · 4 passos</option>
+                    <option value="10" selected>Equilibrada · 10 passos</option>
+                    <option value="25">Alta · 25 passos</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="generate-row">
+                <button class="primary-btn" id="customGenerateBtn">✦ Gerar voz personalizada</button>
+                <span class="generation-status" id="customGenerationStatus">Aguardando engine local.</span>
+              </div>
+
+              <div class="result-card" id="customResultCard">
+                <div class="result-top">
+                  <strong>Resultado convertido</strong>
+                  <button class="secondary-btn" id="customDownloadBtn">↓ Baixar WAV</button>
+                </div>
+                <audio id="customResultAudio" controls preload="metadata"></audio>
+              </div>
+            </section>
+          </div>
+
+          <div class="section-head custom-library-head">
+            <div>
+              <h2>Minha biblioteca</h2>
+              <p id="customVoiceCount">0 vozes personalizadas</p>
+            </div>
+            <button class="ghost-btn" id="customRefreshBtn">↻ Atualizar</button>
+          </div>
+          <div class="voice-grid" id="customVoiceGrid">
+            <div class="empty" style="grid-column:1/-1">Conecte o KPNC Voice Engine para carregar suas vozes.</div>
+          </div>
+        </section>
+
         <section class="view" id="view-favorites">
           <div class="section-head">
             <div>
@@ -132,21 +243,32 @@
           <div class="section-head">
             <div>
               <h2>Configurações</h2>
-              <p>Estado do motor, armazenamento local e personalização.</p>
+              <p>Estado dos motores, armazenamento local e personalização.</p>
             </div>
           </div>
 
           <div class="settings-grid">
             <div class="settings-card">
-              <h3>Motor de IA</h3>
-              <p>Kokoro-82M v1.0 via kokoro-js. O app tenta WebGPU primeiro e usa WASM como alternativa.</p>
+              <h3>Motores TTS</h3>
+              <p>Vozz/Kokoro para português brasileiro e Kokoro.js para inglês. Ambos rodam no navegador.</p>
               <div class="info-list">
                 <div class="info-row"><span>Modelo</span><strong>Kokoro-82M v1.0</strong></div>
-                <div class="info-row"><span>Vozes</span><strong>54</strong></div>
+                <div class="info-row"><span>Vozes</span><strong>31</strong></div>
                 <div class="info-row"><span>Português BR</span><strong>3 vozes</strong></div>
                 <div class="info-row"><span>Execução</span><strong id="settingsEngine">Ainda não carregada</strong></div>
               </div>
               <div style="margin-top:16px"><button class="primary-btn" id="settingsLoadBtn">Carregar IA</button></div>
+            </div>
+
+            <div class="settings-card">
+              <h3>Engine de clonagem</h3>
+              <p>Seed-VC roda separadamente no seu computador. O GitHub Pages continua servindo apenas a interface.</p>
+              <div class="info-list">
+                <div class="info-row"><span>Motor</span><strong>Seed-VC</strong></div>
+                <div class="info-row"><span>Treino por voz</span><strong>Não é obrigatório</strong></div>
+                <div class="info-row"><span>Referência</span><strong>1–30 s</strong></div>
+                <div class="info-row"><span>Servidor pago</span><strong>Não</strong></div>
+              </div>
             </div>
 
             <div class="settings-card">
@@ -162,21 +284,11 @@
 
             <div class="settings-card">
               <h3>Dados locais</h3>
-              <p>Favoritos, apelidos e histórico ficam só neste navegador. O modelo pode permanecer no cache do navegador.</p>
+              <p>Favoritos, apelidos e histórico ficam neste navegador. As referências personalizadas ficam na pasta do engine local.</p>
               <div class="stats-grid">
                 <div class="stat"><strong id="favStat">0</strong><span>favoritas</span></div>
                 <div class="stat"><strong id="historyStat">0</strong><span>áudios</span></div>
                 <div class="stat"><strong>0</strong><span>contas necessárias</span></div>
-              </div>
-            </div>
-
-            <div class="settings-card">
-              <h3>Limitações desta build</h3>
-              <p>Esta versão gratuita estática usa as vozes prontas do Kokoro. Clonagem de voz por amostra não está habilitada, porque isso exigiria outro modelo ou um backend de inferência.</p>
-              <div class="info-list">
-                <div class="info-row"><span>Clonagem por áudio</span><strong>Não</strong></div>
-                <div class="info-row"><span>Exportação</span><strong>WAV</strong></div>
-                <div class="info-row"><span>Servidor pago</span><strong>Não precisa</strong></div>
               </div>
             </div>
           </div>
@@ -187,5 +299,6 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="./app.js"></script>
+  <script type="module" src="./custom-voices.js"></script>
 </body>
 </html>
