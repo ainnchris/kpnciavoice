@@ -1,0 +1,5 @@
+engine/.venv/
+engine/seed-vc/
+engine/data/
+engine/__pycache__/
+*.pyc
