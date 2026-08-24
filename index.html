@@ -1,69 +1,106 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#070a10" />
-  <meta name="description" content="KPNC Voice Studio: TTS local e biblioteca de vozes com Fish Audio." />
-  <title>KPNC Voice Studio</title>
+  <title>KPNC Voice Gallery</title>
+  <meta name="description" content="Catálogo visual de vozes com biblioteca online, estúdio de geração e histórico local." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./custom-voices.css" />
-  <script src="./fish-config.js"></script>
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <div class="brand">
-        <div class="brand-mark">K</div>
-        <div class="brand-copy">
-          <strong>KPNC Voice Studio</strong>
-          <span>AI Voice Lab</span>
+      <div class="sidebar-top">
+        <div class="brand">
+          <div class="brand-logo">KG</div>
+          <div>
+            <strong>KPNC Voice Gallery</strong>
+            <span>Biblioteca criativa de vozes</span>
+          </div>
         </div>
+        <button class="ghost-icon mobile-close" id="mobileMenu" aria-label="Abrir menu">☰</button>
       </div>
 
-      <nav class="nav" aria-label="Navegação principal">
-        <button class="nav-button active" data-view-target="discovery"><span class="nav-icon">◈</span> Discovery</button>
-        <button class="nav-button" data-view-target="studio"><span class="nav-icon">✦</span> Studio</button>
-        <button class="nav-button" data-view-target="custom"><span class="nav-icon">◎</span> Fish Voices</button>
-        <button class="nav-button" data-view-target="favorites"><span class="nav-icon">♥</span> Favoritas</button>
-        <button class="nav-button" data-view-target="history"><span class="nav-icon">↺</span> Histórico</button>
-        <button class="nav-button" data-view-target="settings"><span class="nav-icon">⚙</span> Configurações</button>
+      <nav class="nav-stack">
+        <button class="nav-link active" data-view-target="discovery">Descobrir</button>
+        <button class="nav-link" data-view-target="studio">Studio</button>
+        <button class="nav-link" data-view-target="online">Catálogo online</button>
+        <button class="nav-link" data-view-target="favorites">Favoritas</button>
+        <button class="nav-link" data-view-target="history">Histórico</button>
+        <button class="nav-link" data-view-target="settings">Preferências</button>
       </nav>
 
-      <div class="sidebar-note">
-        <strong>Dois modos</strong>
-        Kokoro/Vozz roda no navegador. A biblioteca avançada usa a API da Fish Audio através de um proxy seguro.
+      <div class="sidebar-card soft-card">
+        <div class="mini-eyebrow">Acesso rápido</div>
+        <strong>Geração instantânea</strong>
+        <p>Escolha uma voz, personalize a mensagem e exporte seu áudio sem sair do navegador.</p>
+        <button class="primary-btn full-width" id="heroStudio">Abrir Studio</button>
       </div>
     </aside>
 
-    <main class="main">
+    <main class="main-layout">
       <header class="topbar">
-        <button class="icon-btn mobile-menu" id="mobileMenu" aria-label="Abrir menu">☰</button>
-        <div class="search-wrap">
-          <span class="search-icon">⌕</span>
-          <input id="globalSearch" type="search" autocomplete="off" placeholder="Pesquisar vozes, idioma ou gênero…" aria-label="Pesquisar vozes" />
+        <div class="topbar-left">
+          <button class="ghost-icon mobile-only" id="mobileMenuTop" aria-label="Abrir navegação">☰</button>
+          <div>
+            <div class="mini-eyebrow">Painel principal</div>
+            <h1>KPNC Voice Gallery</h1>
+          </div>
         </div>
-        <div class="engine-pill" id="enginePill">IA não carregada</div>
+        <div class="topbar-actions">
+          <label class="searchbox">
+            <span>⌕</span>
+            <input id="globalSearch" type="search" placeholder="Buscar por voz, idioma ou estilo" />
+          </label>
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema">
+            <span class="theme-dot"></span>
+            <span id="themeToggleText">Dark</span>
+          </button>
+        </div>
       </header>
 
-      <div class="content">
+      <div class="views-wrap">
         <section class="view active" id="view-discovery">
-          <div class="hero">
-            <div class="hero-kicker">TTS local + Fish Audio</div>
-            <h1>Sua biblioteca de vozes em um só lugar.</h1>
-            <p>Use as 31 vozes locais sem API ou abra Fish Voices para pesquisar a biblioteca pública da Fish, clonar vozes autorizadas e gerar diretamente pelo S2.1 Pro.</p>
-            <div class="hero-actions">
-              <button class="primary-btn" id="heroStudio">Abrir Studio ✦</button>
-              <button class="secondary-btn" id="loadModelBtn">Carregar IA local</button>
+          <div class="hero hero-grid">
+            <div>
+              <div class="mini-eyebrow">Coleção visual</div>
+              <h2>Descubra vozes com uma interface nova, visual e pronta para usar.</h2>
+              <p>Explore perfis com capas visuais, prévias rápidas e navegação por idioma. Escolha uma voz e leve direto para o estúdio.</p>
+              <div class="hero-actions">
+                <button class="primary-btn" id="heroStudioSecondary">Criar no Studio</button>
+                <button class="ghost-btn" data-view-target="online">Abrir catálogo online</button>
+              </div>
+              <div class="hero-stats">
+                <article><strong id="heroVoicesCount">31</strong><span>vozes locais</span></article>
+                <article><strong>2</strong><span>temas visuais</span></article>
+                <article><strong id="voiceCountText">31 vozes exibidas</strong><span>biblioteca atual</span></article>
+              </div>
+            </div>
+            <div class="hero-art-panel soft-card">
+              <div class="hero-collage">
+                <div class="hero-bubble bubble-a"></div>
+                <div class="hero-bubble bubble-b"></div>
+                <div class="hero-bubble bubble-c"></div>
+                <div class="hero-bubble bubble-d"></div>
+              </div>
+              <div class="hero-art-copy">
+                <span class="mini-eyebrow">Experiência visual</span>
+                <strong>Capas dinâmicas por voz</strong>
+                <p>Cada perfil recebe sua própria arte visual, com estilo, categoria e identidade melhor definidos.</p>
+              </div>
             </div>
           </div>
 
           <div class="section-head">
             <div>
-              <h2>Discovery local</h2>
-              <p id="voiceCountText">31 vozes disponíveis</p>
+              <div class="mini-eyebrow">Filtros</div>
+              <h3>Biblioteca local</h3>
             </div>
-            <div class="filters" id="languageFilters"></div>
+            <div id="languageFilters" class="chip-row"></div>
           </div>
           <div class="voice-grid" id="voiceGrid"></div>
         </section>
@@ -71,212 +108,171 @@
         <section class="view" id="view-studio">
           <div class="section-head">
             <div>
-              <h2>Studio local</h2>
-              <p>Selecione uma voz Kokoro, escreva o texto e gere WAV no navegador.</p>
+              <div class="mini-eyebrow">Estúdio</div>
+              <h3>Monte o áudio da voz selecionada</h3>
             </div>
+            <span class="engine-pill" id="enginePill">Pronto para gerar</span>
           </div>
 
           <div class="studio-layout">
-            <aside class="panel" id="selectedVoicePanel"></aside>
-            <section class="panel">
-              <h2>Gerar fala</h2>
-              <p class="panel-sub">O primeiro uso baixa o modelo. Depois, o navegador reaproveita o cache.</p>
+            <div class="soft-card selected-panel" id="selectedVoicePanel"></div>
 
-              <label class="form-label" for="speechText"><span>Texto</span><small><span id="charCount">0</span>/1200</small></label>
-              <textarea class="textarea" id="speechText" maxlength="1200" placeholder="Digite o que a voz deve falar…"></textarea>
+            <div class="soft-card studio-card">
+              <div class="form-head">
+                <h4>Texto</h4>
+                <span class="caption"><strong id="charCount">0</strong>/1200</span>
+              </div>
+              <textarea id="speechText" class="text-area" placeholder="Digite o texto que você quer ouvir..."></textarea>
 
-              <div class="control-row">
-                <div>
-                  <label class="form-label" for="speedRange"><span>Velocidade</span><small id="speedValue">1.00×</small></label>
-                  <input class="range" id="speedRange" type="range" min="0.5" max="2" step="0.05" value="1" />
-                </div>
-                <button class="ghost-btn" id="previewSelectedBtn">▶ Prévia</button>
+              <div class="control-grid">
+                <label class="control-block">
+                  <span>Velocidade</span>
+                  <input id="speedRange" type="range" min="0.5" max="2" step="0.05" value="1" />
+                  <small id="speedValue">1.00×</small>
+                </label>
               </div>
 
-              <div class="generate-row">
-                <button class="primary-btn" id="generateBtn">✦ Gerar áudio</button>
-                <span class="generation-status" id="generationStatus">Pronto para gerar.</span>
+              <div class="action-row">
+                <button class="primary-btn" id="generateBtn">Gerar áudio</button>
+                <button class="secondary-btn" id="previewSelectedBtn">Ouvir prévia</button>
+                <button class="ghost-btn" id="loadModelBtn">Preparar voz</button>
               </div>
-              <div class="progress-track" id="progressTrack"><div class="progress-bar" id="progressBar"></div></div>
 
-              <div class="result-card" id="resultCard">
-                <div class="result-top">
-                  <strong>Última geração</strong>
-                  <button class="secondary-btn" id="downloadCurrentBtn">↓ Baixar WAV</button>
-                </div>
-                <audio id="resultAudio" controls preload="metadata"></audio>
+              <div class="progress-track" id="progressTrack">
+                <div class="progress-bar" id="progressBar"></div>
               </div>
-            </section>
+              <p class="status-text" id="generationStatus">Tudo pronto. Escolha uma voz e gere seu áudio.</p>
+            </div>
+
+            <div class="soft-card result-card" id="resultCard">
+              <div class="form-head">
+                <h4>Resultado</h4>
+                <button class="secondary-btn" id="downloadCurrentBtn">Baixar</button>
+              </div>
+              <audio id="resultAudio" controls preload="none"></audio>
+            </div>
           </div>
         </section>
 
-        <section class="view" id="view-custom">
-          <div class="section-head custom-head">
+        <section class="view" id="view-online">
+          <div class="section-head">
             <div>
-              <h2>Fish Voices</h2>
-              <p>Biblioteca pública, geração de alta qualidade e clonagem persistente pela API da Fish Audio.</p>
+              <div class="mini-eyebrow">Catálogo online</div>
+              <h3>Perfis públicos, capas ilustradas e vozes personalizadas</h3>
             </div>
-            <div class="custom-engine-state offline" id="fishApiState">● Fish API desconectada</div>
+            <span class="engine-pill" id="onlineConnectionBadge">Conectando…</span>
           </div>
 
-          <div class="custom-callout fish-rights-callout">
-            <strong>Uso responsável</strong>
-            <span>Ao clonar ou usar uma voz de pessoa real, inclusive figura pública, você é responsável por possuir os direitos, permissões e consentimentos necessários e por fazer as divulgações exigidas para conteúdo sintético. O KPNC Voice Studio não apresenta áudio gerado como gravação autêntica da pessoa.</span>
-          </div>
-
-          <div class="fish-api-setup" id="fishApiSetup" hidden>
-            <div>
-              <strong>Backend Fish ainda não configurado</strong>
-              <span>O proprietário do site precisa informar a URL do Cloudflare Worker uma única vez.</span>
-            </div>
-            <div class="custom-inline">
-              <input class="text-input" id="fishApiInput" placeholder="https://kpnc-voice-api.seu-subdominio.workers.dev" spellcheck="false" />
-              <button class="secondary-btn" id="fishSaveApiBtn">Salvar neste navegador</button>
-            </div>
-          </div>
-
-          <section class="panel fish-library-panel">
-            <div class="fish-toolbar-head">
-              <div>
-                <h2>Biblioteca pública</h2>
-                <p class="panel-sub" id="fishBackendNote">Carregando vozes disponíveis na Fish Audio…</p>
-              </div>
-              <button class="ghost-btn" id="fishRefreshBtn">↻ Atualizar</button>
-            </div>
-
-            <div class="fish-filters">
-              <div class="fish-search-field">
-                <label class="form-label" for="fishVoiceSearch">Buscar voz</label>
-                <input class="text-input" id="fishVoiceSearch" placeholder="Nome, personagem, ator, narrador…" />
-              </div>
-              <div>
-                <label class="form-label" for="fishLanguage">Idioma</label>
-                <select class="custom-select" id="fishLanguage">
-                  <option value="">Todos</option>
+          <div class="online-layout">
+            <div class="soft-card catalog-panel">
+              <div class="catalog-toolbar">
+                <label class="searchbox compact">
+                  <span>⌕</span>
+                  <input id="onlineSearch" type="search" placeholder="Buscar vozes online" />
+                </label>
+                <select id="onlineLanguage" class="text-input small-select">
+                  <option value="">Todos os idiomas</option>
                   <option value="pt">Português</option>
-                  <option value="en">English</option>
-                  <option value="es">Español</option>
-                  <option value="ja">日本語</option>
-                  <option value="ko">한국어</option>
-                  <option value="fr">Français</option>
-                  <option value="de">Deutsch</option>
-                  <option value="ru">Русский</option>
+                  <option value="en">Inglês</option>
+                  <option value="es">Espanhol</option>
+                  <option value="fr">Francês</option>
                   <option value="it">Italiano</option>
+                  <option value="ja">Japonês</option>
                 </select>
-              </div>
-              <div>
-                <label class="form-label" for="fishSort">Ordenar</label>
-                <select class="custom-select" id="fishSort">
+                <select id="onlineSort" class="text-input small-select">
                   <option value="task_count">Mais usadas</option>
-                  <option value="score">Relevância</option>
-                  <option value="created_at">Mais novas</option>
+                  <option value="score">Em destaque</option>
+                  <option value="created_at">Recentes</option>
                 </select>
+                <label class="toggle-inline"><input id="onlineLicensed" type="checkbox" /> Somente licenciadas</label>
               </div>
-              <label class="fish-toggle">
-                <input type="checkbox" id="fishLicensedOnly" />
-                <span>Somente licenciadas pela Fish</span>
-              </label>
+              <div class="catalog-meta"><span id="onlineCount">Carregando vozes…</span><button class="ghost-btn" id="onlineRefreshBtn">Atualizar</button></div>
+              <div class="voice-grid online-grid" id="onlineVoicesGrid"></div>
             </div>
 
-            <div class="fish-list-summary">
-              <span id="fishVoiceCount">0 vozes</span>
-              <span>Selecione uma voz para gerar diretamente pelo seu ID da Fish.</span>
+            <div class="online-side">
+              <div class="soft-card selected-panel" id="onlineSelectedPanel"></div>
+
+              <div class="soft-card studio-card">
+                <div class="form-head">
+                  <h4>Gerar com a voz online</h4>
+                  <span class="caption"><strong id="onlineCharCount">0</strong>/5000</span>
+                </div>
+                <textarea id="onlineText" class="text-area" placeholder="Digite um texto para gerar com a voz online selecionada..."></textarea>
+                <div class="control-grid two-cols">
+                  <label class="control-block">
+                    <span>Velocidade</span>
+                    <input id="onlineSpeed" type="range" min="0.5" max="2" step="0.05" value="1" />
+                    <small id="onlineSpeedValue">1.00×</small>
+                  </label>
+                  <label class="control-block">
+                    <span>Formato</span>
+                    <select id="onlineFormat" class="text-input">
+                      <option value="mp3">MP3</option>
+                      <option value="wav">WAV</option>
+                      <option value="opus">OPUS</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="action-row">
+                  <button class="primary-btn" id="onlineGenerateBtn">Gerar nesta voz</button>
+                  <button class="secondary-btn" id="onlinePreviewBtn">Ouvir amostra</button>
+                </div>
+                <p class="status-text" id="onlineStatusText">Escolha um perfil do catálogo para começar.</p>
+              </div>
+
+              <div class="soft-card result-card" id="onlineResultCard">
+                <div class="form-head">
+                  <h4>Resultado online</h4>
+                  <button class="secondary-btn" id="onlineDownloadBtn">Baixar</button>
+                </div>
+                <audio id="onlineAudio" controls preload="none"></audio>
+              </div>
             </div>
-            <div class="voice-grid" id="fishVoiceGrid">
-              <div class="empty" style="grid-column:1/-1">Conectando à Fish Audio…</div>
+          </div>
+
+          <div class="section-head section-top-gap">
+            <div>
+              <div class="mini-eyebrow">Biblioteca própria</div>
+              <h3>Adicionar uma nova voz ao seu catálogo</h3>
             </div>
-          </section>
+            <span class="subtle-label">Salva neste navegador</span>
+          </div>
 
-          <div class="custom-layout fish-studio-layout">
-            <section class="panel custom-panel">
-              <h2>Gerar com Fish S2.1</h2>
-              <p class="panel-sub">A voz selecionada já está pronta. Basta escrever o texto.</p>
-
-              <div class="custom-selected" id="fishSelectedVoice">
-                <div class="custom-selected-icon">◎</div>
-                <div><strong>Nenhuma voz selecionada</strong><span>Escolha uma voz da biblioteca acima ou crie uma nova.</span></div>
-              </div>
-
-              <label class="form-label" for="fishSpeechText"><span>Texto</span><small><span id="fishCharCount">0</span>/5000</small></label>
-              <textarea class="textarea fish-textarea" id="fishSpeechText" maxlength="5000" placeholder="Digite o que a voz deve falar. Tags de emoção suportadas pela Fish também podem ser usadas quando compatíveis…"></textarea>
-
-              <div class="custom-controls fish-generation-controls">
-                <div>
-                  <label class="form-label" for="fishSpeed">Velocidade <small id="fishSpeedValue">1.00×</small></label>
-                  <input class="range" id="fishSpeed" type="range" min="0.5" max="2" step="0.05" value="1" />
+          <div class="online-layout">
+            <div class="soft-card form-panel">
+              <form id="cloneVoiceForm" class="stack-form">
+                <div class="grid-two">
+                  <label class="control-block"><span>Nome da voz</span><input class="text-input" id="cloneName" name="name" required maxlength="80" placeholder="Ex.: Narrador Cinemático" /></label>
+                  <label class="control-block"><span>Visibilidade</span><select class="text-input" id="cloneVisibility" name="visibility"><option value="unlist">Não listada</option><option value="private">Privada</option><option value="public">Pública</option></select></label>
                 </div>
-                <div>
-                  <label class="form-label" for="fishFormat">Formato</label>
-                  <select class="custom-select" id="fishFormat">
-                    <option value="mp3">MP3</option>
-                    <option value="wav">WAV</option>
-                    <option value="opus">Opus</option>
-                  </select>
+                <label class="control-block"><span>Transcrição de referência (opcional)</span><textarea class="text-area compact" id="cloneTranscript" name="transcript" placeholder="Se quiser, descreva ou transcreva o áudio de referência."></textarea></label>
+                <label class="control-block"><span>Tags (opcional)</span><input class="text-input" id="cloneTags" name="tags" maxlength="160" placeholder="cinema, grave, narrativa" /></label>
+                <div class="grid-two">
+                  <label class="control-block"><span>Áudio de referência</span><input class="text-input" id="cloneReference" name="reference" type="file" accept="audio/*" required /></label>
+                  <label class="control-block"><span>Capa visual (opcional)</span><input class="text-input" id="cloneCover" name="cover" type="file" accept="image/*" /></label>
                 </div>
-              </div>
-
-              <div class="generate-row">
-                <button class="primary-btn" id="fishGenerateBtn">✦ Gerar nesta voz</button>
-                <span class="generation-status" id="fishGenerationStatus">Selecione uma voz.</span>
-              </div>
-
-              <div class="result-card" id="fishResultCard">
-                <div class="result-top">
-                  <strong>Resultado Fish Audio</strong>
-                  <button class="secondary-btn" id="fishDownloadBtn">↓ Baixar</button>
+                <label class="consent-line"><input id="cloneConsent" name="rights_confirmed" type="checkbox" required /> Confirmo que possuo direitos, permissões e consentimentos necessários para usar esta referência e publicar uma voz sintética a partir dela.</label>
+                <div class="action-row">
+                  <button class="primary-btn" type="submit" id="cloneSubmitBtn">Criar voz</button>
+                  <button class="ghost-btn" type="reset">Limpar</button>
                 </div>
-                <audio id="fishResultAudio" controls preload="metadata"></audio>
-              </div>
-            </section>
+                <p class="status-text" id="cloneStatusText">Quando criada, a nova voz ficará disponível aqui mesmo no seu catálogo pessoal.</p>
+              </form>
+            </div>
 
-            <section class="panel custom-panel">
-              <h2>Criar voz persistente</h2>
-              <p class="panel-sub">A referência é enviada uma vez para a Fish e vira um <code>reference_id</code> reutilizável. Não é necessário reenviar o áudio em cada geração.</p>
-
-              <label class="form-label" for="cloneName">Nome da voz</label>
-              <input class="text-input" id="cloneName" maxlength="80" placeholder="Ex.: Narrador cinematográfico" />
-
-              <label class="form-label" for="cloneReference">Áudio de referência</label>
-              <input class="custom-file" id="cloneReference" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg" />
-              <p class="custom-hint">Prefira áudio limpo, uma única pessoa falando, sem música. Arquivo máximo nesta build: 20 MB.</p>
-
-              <label class="form-label" for="cloneTranscript">Transcrição da referência <small>opcional</small></label>
-              <textarea class="textarea clone-transcript" id="cloneTranscript" maxlength="1500" placeholder="Escreva exatamente o que é falado no áudio. Se deixar vazio, a Fish pode usar ASR."></textarea>
-
-              <label class="form-label" for="cloneCover">Capa <small>obrigatória apenas para voz pública</small></label>
-              <input class="custom-file" id="cloneCover" type="file" accept="image/png,image/jpeg,image/webp" />
-
-              <div class="custom-controls">
-                <div>
-                  <label class="form-label" for="cloneVisibility">Visibilidade</label>
-                  <select class="custom-select" id="cloneVisibility">
-                    <option value="unlist" selected>Não listada</option>
-                    <option value="private">Privada</option>
-                    <option value="public">Pública na Fish</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="form-label" for="cloneTags">Tags</label>
-                  <input class="text-input" id="cloneTags" maxlength="160" placeholder="pt-br, anime, grave" />
-                </div>
-              </div>
-
-              <label class="custom-check">
-                <input id="cloneConsent" type="checkbox" />
-                <span>Confirmo que tenho os direitos, consentimentos e permissões necessários para esta referência. Se for uma pessoa real ou figura pública, assumo a responsabilidade pelo uso e pelas divulgações exigidas para conteúdo sintético.</span>
-              </label>
-
-              <button class="primary-btn custom-full" id="cloneBtn">+ Criar voz na Fish</button>
-              <p class="custom-hint" id="cloneStatus">A voz criada ficará disponível imediatamente quando o modo rápido da Fish concluir.</p>
-            </section>
+            <div class="soft-card catalog-panel">
+              <div class="catalog-meta"><span id="myVoicesCount">Nenhuma voz criada ainda.</span></div>
+              <div class="voice-grid online-grid" id="myVoicesGrid"></div>
+            </div>
           </div>
         </section>
 
         <section class="view" id="view-favorites">
           <div class="section-head">
             <div>
-              <h2>Favoritas</h2>
-              <p>As vozes locais que você marcou ficam salvas neste navegador.</p>
+              <div class="mini-eyebrow">Favoritas</div>
+              <h3>Sua coleção salva</h3>
             </div>
           </div>
           <div class="voice-grid" id="favoritesGrid"></div>
@@ -285,64 +281,54 @@
         <section class="view" id="view-history">
           <div class="section-head">
             <div>
-              <h2>Histórico</h2>
-              <p>Até 30 gerações locais ficam armazenadas no navegador.</p>
+              <div class="mini-eyebrow">Histórico</div>
+              <h3>Áudios gerados recentemente</h3>
             </div>
-            <button class="danger-btn" id="clearHistoryBtn">Limpar histórico</button>
+            <button class="ghost-btn" id="clearHistoryBtn">Apagar histórico</button>
           </div>
           <div class="history-list" id="historyList"></div>
         </section>
 
         <section class="view" id="view-settings">
-          <div class="section-head">
-            <div>
-              <h2>Configurações</h2>
-              <p>Estado dos motores, armazenamento e integração Fish.</p>
-            </div>
-          </div>
-
           <div class="settings-grid">
-            <div class="settings-card">
-              <h3>Motores locais</h3>
-              <p>Vozz/Kokoro para português brasileiro e Kokoro.js para inglês. Ambos rodam no navegador.</p>
-              <div class="info-list">
-                <div class="info-row"><span>Modelo</span><strong>Kokoro-82M v1.0</strong></div>
-                <div class="info-row"><span>Vozes</span><strong>31</strong></div>
-                <div class="info-row"><span>Português BR</span><strong>3 vozes</strong></div>
-                <div class="info-row"><span>Execução</span><strong id="settingsEngine">Ainda não carregada</strong></div>
+            <div class="soft-card settings-card">
+              <div class="section-head minimal">
+                <div>
+                  <div class="mini-eyebrow">Preferências</div>
+                  <h3>Ajustes visuais</h3>
+                </div>
               </div>
-              <div style="margin-top:16px"><button class="primary-btn" id="settingsLoadBtn">Carregar IA local</button></div>
-            </div>
-
-            <div class="settings-card">
-              <h3>Fish Audio</h3>
-              <p>A chave da Fish fica somente no Cloudflare Worker. O navegador recebe apenas vozes e áudio, nunca a credencial.</p>
-              <div class="info-list">
-                <div class="info-row"><span>API</span><strong>Fish Audio</strong></div>
-                <div class="info-row"><span>Modelo</span><strong id="fishModelSetting">S2.1 Pro</strong></div>
-                <div class="info-row"><span>Clonagem persistente</span><strong>Sim</strong></div>
-                <div class="info-row"><span>Biblioteca pública</span><strong>Sim</strong></div>
-              </div>
-            </div>
-
-            <div class="settings-card">
-              <h3>Apelido da voz local</h3>
-              <p>Você pode dar um nome próprio à voz Kokoro selecionada. Isso altera só a interface local.</p>
-              <label class="form-label" for="aliasInput">Apelido</label>
-              <input class="text-input" id="aliasInput" maxlength="40" placeholder="Ex.: Narrador Grave" />
-              <div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
-                <button class="secondary-btn" id="saveAliasBtn">Salvar apelido</button>
-                <button class="ghost-btn" id="resetAliasBtn">Restaurar nome</button>
-              </div>
-            </div>
-
-            <div class="settings-card">
-              <h3>Dados locais</h3>
-              <p>Favoritos, apelidos, histórico local e IDs de vozes Fish criadas ficam neste navegador.</p>
-              <div class="stats-grid">
+              <p>Personalize a aparência do painel, o nome das vozes e seus dados salvos neste navegador.</p>
+              <div class="stats-grid spaced">
                 <div class="stat"><strong id="favStat">0</strong><span>favoritas</span></div>
                 <div class="stat"><strong id="historyStat">0</strong><span>áudios</span></div>
-                <div class="stat"><strong>0</strong><span>chaves expostas</span></div>
+                <div class="stat"><strong>2</strong><span>temas</span></div>
+              </div>
+              <div class="inline-setting">
+                <label class="control-block grow">
+                  <span>Apelido da voz selecionada</span>
+                  <input id="aliasInput" class="text-input" placeholder="Ex.: Voz principal" />
+                </label>
+              </div>
+              <div class="action-row">
+                <button class="secondary-btn" id="saveAliasBtn">Salvar apelido</button>
+                <button class="ghost-btn" id="resetAliasBtn">Restaurar nome</button>
+                <button class="ghost-btn" id="settingsLoadBtn">Preparar voz atual</button>
+              </div>
+            </div>
+
+            <div class="soft-card settings-card">
+              <div class="section-head minimal">
+                <div>
+                  <div class="mini-eyebrow">Status</div>
+                  <h3>Painel atual</h3>
+                </div>
+              </div>
+              <div class="info-list">
+                <div class="info-row"><span>Tema atual</span><strong id="settingsTheme">Dark</strong></div>
+                <div class="info-row"><span>Biblioteca local</span><strong>31 vozes</strong></div>
+                <div class="info-row"><span>Catálogo visual</span><strong>Capas automáticas</strong></div>
+                <div class="info-row"><span>Modo de geração</span><strong id="settingsEngine">Pronto</strong></div>
               </div>
             </div>
           </div>
@@ -352,6 +338,7 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="./fish-config.js"></script>
   <script type="module" src="./app.js"></script>
   <script type="module" src="./custom-voices.js"></script>
 </body>
