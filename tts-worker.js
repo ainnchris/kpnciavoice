@@ -15,20 +15,33 @@ function normalizeProgress(value) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+async function hasUsableWebGPU() {
+  try {
+    if (typeof navigator === "undefined" || !navigator.gpu) return false;
+    const adapter = await navigator.gpu.requestAdapter();
+    return Boolean(adapter);
+  } catch {
+    return false;
+  }
+}
+
 async function createTTS() {
   if (tts) return tts;
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    const hasWebGPU = typeof navigator !== "undefined" && "gpu" in navigator;
-    const attempts = hasWebGPU
+    const webgpuAvailable = await hasUsableWebGPU();
+
+    // Kokoro recomenda FP32 no backend WebGPU e Q8 no backend WASM.
+    // Só tentamos WebGPU quando o navegador realmente entrega um adapter.
+    const attempts = webgpuAvailable
       ? [
-          { device: "webgpu", dtype: "q8", label: "WebGPU · Q8" },
+          { device: "webgpu", dtype: "fp32", label: "WebGPU · FP32" },
           { device: "wasm", dtype: "q8", label: "WASM · Q8" },
         ]
       : [{ device: "wasm", dtype: "q8", label: "WASM · Q8" }];
 
-    let lastError = null;
+    const errors = [];
 
     for (const attempt of attempts) {
       try {
@@ -55,14 +68,17 @@ async function createTTS() {
         send("ready", { engine });
         return tts;
       } catch (error) {
-        lastError = error;
+        const detail = error?.message || String(error);
+        errors.push(`${attempt.label}: ${detail}`);
         send("fallback", {
-          message: `${attempt.label} falhou; tentando modo compatível…`,
+          message: `${attempt.label} falhou. Tentando o próximo modo compatível…`,
         });
       }
     }
 
-    throw lastError ?? new Error("Não foi possível carregar o modelo de voz.");
+    throw new Error(
+      `Não foi possível iniciar o motor de voz. ${errors.join(" | ")}`
+    );
   })();
 
   try {
@@ -91,6 +107,7 @@ self.addEventListener("message", async (event) => {
   if (data.type !== "generate") return;
 
   const requestId = data.requestId;
+
   try {
     const model = await createTTS();
     const text = String(data.text ?? "").trim();
@@ -105,7 +122,12 @@ self.addEventListener("message", async (event) => {
     }
 
     send("generating", { requestId, voice });
-    const audio = await model.generate(text, { voice, speed });
+
+    const audio = await model.generate(text, {
+      voice,
+      speed,
+    });
+
     const blob = audio.toBlob();
 
     send("result", {
