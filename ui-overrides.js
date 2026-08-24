@@ -13,8 +13,9 @@
   }
 
   function refreshPreviewButtons(){
-    $$('[data-preview-voice]').forEach(btn => {
-      const active = activePreviewAudio && activePreviewId === btn.dataset.previewVoice;
+    $$('[data-preview-voice], [data-fish-preview]').forEach(btn => {
+      const id = btn.dataset.previewVoice || btn.dataset.fishPreview;
+      const active = activePreviewAudio && activePreviewId === id;
       btn.textContent = active && !activePreviewAudio.paused ? '❚❚' : '▶';
       btn.setAttribute('aria-label', active && !activePreviewAudio.paused ? 'Pausar prévia' : active ? 'Continuar prévia' : 'Ouvir prévia');
     });
@@ -61,9 +62,10 @@
 
   document.addEventListener('click', e => {
     const cardBtn = e.target.closest?.('[data-preview-voice]');
+    const cloudBtn = e.target.closest?.('[data-fish-preview]');
     const studioBtn = e.target.closest?.('#previewSelectedBtn');
-    if(!cardBtn && !studioBtn) return;
-    const id = cardBtn?.dataset.previewVoice || currentSelectedVoiceId();
+    if(!cardBtn && !cloudBtn && !studioBtn) return;
+    const id = cardBtn?.dataset.previewVoice || cloudBtn?.dataset.fishPreview || currentSelectedVoiceId();
     if(!id) return;
 
     if(activePreviewAudio && activePreviewId === id){
